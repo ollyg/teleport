@@ -1,6 +1,6 @@
 # This Dockerfile makes the "build box": the container used to build official
 # releases of Teleport and its documentation.
-FROM quay.io/gravitational/buildbox-base:1.0
+FROM gcr.io/kubeadm-167321/gravitational/buildbox-base:1.0
 
 ARG UID
 ARG GID
