@@ -77,6 +77,9 @@ func NewAuthServer(cfg *InitConfig, opts ...AuthServerOption) (*AuthServer, erro
 	if cfg.Access == nil {
 		cfg.Access = local.NewAccessService(cfg.Backend)
 	}
+	if cfg.DynamicAccess == nil {
+		cfg.DynamicAccess = local.NewDynamicAccessService(cfg.Backend)
+	}
 	if cfg.ClusterConfiguration == nil {
 		cfg.ClusterConfiguration = local.NewClusterConfigurationService(cfg.Backend)
 	}
@@ -111,6 +114,7 @@ func NewAuthServer(cfg *InitConfig, opts ...AuthServerOption) (*AuthServer, erro
 			Provisioner:          cfg.Provisioner,
 			Identity:             cfg.Identity,
 			Access:               cfg.Access,
+			DynamicAccess:        cfg.DynamicAccess,
 			ClusterConfiguration: cfg.ClusterConfiguration,
 			IAuditLog:            cfg.AuditLog,
 			Events:               cfg.Events,
@@ -132,6 +136,7 @@ type AuthServices struct {
 	services.Provisioner
 	services.Identity
 	services.Access
+	services.DynamicAccess
 	services.ClusterConfiguration
 	services.Events
 	events.IAuditLog
@@ -1350,6 +1355,41 @@ func (a *AuthServer) DeleteRole(name string) error {
 	return a.Access.DeleteRole(name)
 }
 
+func (a *AuthServer) CreateRoleRequest(req services.RoleRequest) error {
+	if err := a.validateRoleRequest(req); err != nil {
+		return trace.Wrap(err)
+	}
+	return a.DynamicAccess.CreateRoleRequest(req)
+}
+
+// validateRoleRequest checks if a given role request is allowable based
+// on the current configuration of the target user.
+func (a *AuthServer) validateRoleRequest(req services.RoleRequest) error {
+	user, err := a.GetUser(req.GetUser(), false)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	// notSeen tracks the roles that are requested, but have not yet been
+	// seen in any of the user's intrinsic roles' "can request" blocks.
+	notSeen := make(map[string]struct{}, len(req.GetRoles()))
+	for _, r := range req.GetRoles() {
+		notSeen[r] = struct{}{}
+	}
+	for _, roleName := range user.GetRoles() {
+		role, err := a.GetRole(roleName)
+		if err != nil {
+			return trace.Wrap(err)
+		}
+		for _, r := range role.GetRequestableRoles() {
+			delete(notSeen, r)
+		}
+	}
+	for r := range notSeen {
+		return trace.NotFound("no rule allows user %q to request role %q", req.GetUser(), r)
+	}
+	return nil
+}
+
 // NewKeepAliver returns a new instance of keep aliver
 func (a *AuthServer) NewKeepAliver(ctx context.Context) (services.KeepAliver, error) {
 	cancelCtx, cancel := context.WithCancel(ctx)
@@ -1443,6 +1483,56 @@ func (a *AuthServer) GetTunnelConnections(clusterName string, opts ...services.M
 func (a *AuthServer) GetAllTunnelConnections(opts ...services.MarshalOption) (conns []services.TunnelConnection, err error) {
 	return a.GetCache().GetAllTunnelConnections(opts...)
 }
+
+/*
+// awaitRoleApproval waits for an approval event for the specified role request.
+//
+// NOTE: this method may block indefinitely if no timeout is applied to ctx.
+func (a *AuthServer) awaitRoleApproval(ctx context.Context, requestID string) (approved bool, err error) {
+	watcher, err := a.NewWatcher(ctx, services.Watch{
+		Name: "role-approval-",
+		Kinds: []services.WatchKind{
+			services.WatchKind{
+				Kind: services.KindRoleRequest,
+				Name: requestID,
+			},
+		},
+	})
+	if err != nil {
+		return false, trace.Wrap(err)
+	}
+	defer watcher.Close()
+	for {
+		select {
+		case event := <-watcher.Events():
+			if event.Resource.GetKind() != services.KindRoleRequest {
+				return false, trace.BadParameter("unexpected resource kind %q", event.Resource.GetKind())
+			}
+			if event.Resource.GetName() != requestID {
+				return false, trace.BadParameter("unexpected request ID %q", event.Resource.GetName())
+			}
+			switch event.Type {
+			case backend.OpInit:
+				continue
+			case backend.OpPut:
+				req, ok := event.Resource.(services.RoleRequest)
+				if !ok {
+					return false, trace.BadParameter("unexpected resource type %T", event.Resource)
+				}
+				return req.IsApproved(), nil
+			case backend.OpDelete:
+				return false, nil
+			default:
+				return false, trace.BadParameter("unexpected event type %s", event.Type)
+			}
+		case <-ctx.Done():
+			return false, trace.Wrap(ctx.Err())
+		case <-watcher.Done():
+			return false, trace.Wrap(watcher.Error())
+		}
+	}
+}
+*/
 
 // authKeepAliver is a keep aliver using auth server directly
 type authKeepAliver struct {

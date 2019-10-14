@@ -452,7 +452,10 @@ func (a *AuthWithRoles) NewWatcher(ctx context.Context, watch services.Watch) (s
 					return nil, trace.Wrap(err)
 				}
 			}
-
+		case services.KindRoleRequest:
+			if err := a.action(defaults.Namespace, services.KindUser, services.VerbRead); err != nil {
+				return nil, trace.Wrap(err)
+			}
 		default:
 			return nil, trace.AccessDenied("not authorized to watch %v events", kind.Kind)
 		}
@@ -778,6 +781,48 @@ func (a *AuthWithRoles) DeleteWebSession(user string, sid string) error {
 	return a.authServer.DeleteWebSession(user, sid)
 }
 
+func (a *AuthWithRoles) GetRoleRequests() ([]services.RoleRequest, error) {
+	// Currently, RoleRequests are scoped under "KindUser" permissions, because
+	// KindUser permissions effectively grant the same powers (access to the names
+	// of users and roles, and the ability to apply roles to users).
+	if err := a.action(defaults.Namespace, services.KindUser, services.VerbList); err != nil {
+		return nil, trace.Wrap(err)
+	}
+	if err := a.action(defaults.Namespace, services.KindUser, services.VerbRead); err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return a.authServer.GetRoleRequests()
+}
+
+func (a *AuthWithRoles) CreateRoleRequest(req services.RoleRequest) error {
+	if !req.GetState().IsPending() || a.currentUserAction(req.GetUser()) != nil {
+		// Users are allowed to create pending requests for themselves, all other
+		// creation attempts are subject to normal permissioning.
+		if err := a.action(defaults.Namespace, services.KindUser, services.VerbCreate); err != nil {
+			return trace.Wrap(err)
+		}
+	}
+	return a.authServer.CreateRoleRequest(req)
+}
+
+func (a *AuthWithRoles) SetRoleRequestState(reqID string, state services.RequestState) error {
+	if err := a.action(defaults.Namespace, services.KindUser, services.VerbUpdate); err != nil {
+		return trace.Wrap(err)
+	}
+	return a.authServer.SetRoleRequestState(reqID, state)
+}
+
+func (a *AuthWithRoles) DeleteRoleRequest(name string) error {
+	if err := a.action(defaults.Namespace, services.KindUser, services.VerbUpdate); err != nil {
+		return trace.Wrap(err)
+	}
+	return a.authServer.DeleteRoleRequest(name)
+}
+
+func (a *AuthWithRoles) WatchRoleRequests(ctx context.Context, watch WatchRoleRequests) (RoleRequestWatcher, error) {
+	return newRoleRequestWatcher(ctx, a, watch)
+}
+
 func (a *AuthWithRoles) GetUsers(withSecrets bool) ([]services.User, error) {
 	if withSecrets {
 		// TODO(fspmarshall): replace admin requirement with VerbReadWithSecrets once we've
@@ -908,6 +953,27 @@ func (a *AuthWithRoles) GenerateUserCerts(ctx context.Context, req proto.UserCer
 		return nil, trace.AccessDenied("this request can be only executed by an admin")
 	}
 
+	// add any applicable role request values.
+	for _, reqID := range req.RoleRequests {
+		roleReq, err := a.authServer.GetRoleRequest(reqID)
+		if err != nil {
+			if trace.IsNotFound(err) {
+				return nil, trace.AccessDenied("invalid role request %q", reqID)
+			}
+			return nil, trace.Wrap(err)
+		}
+		if roleReq.GetUser() != req.Username {
+			return nil, trace.AccessDenied("invalid role request %q", reqID)
+		}
+		if !roleReq.GetState().IsApproved() {
+			return nil, trace.AccessDenied("role-request %q is awaiting approval", reqID)
+		}
+		if err := a.authServer.validateRoleRequest(roleReq); err != nil {
+			return nil, trace.Wrap(err)
+		}
+		roles = append(roles, roleReq.GetRoles()...)
+	}
+
 	// Extract the user and role set for whom the certificate will be generated.
 	user, err := a.GetUser(req.Username, false)
 	if err != nil {
@@ -932,6 +998,14 @@ func (a *AuthWithRoles) GenerateUserCerts(ctx context.Context, req proto.UserCer
 	})
 	if err != nil {
 		return nil, trace.Wrap(err)
+	}
+
+	// successfully built certificate, consume role requests to prevent
+	// double-usage.
+	for _, reqID := range req.RoleRequests {
+		if err := a.authServer.DeleteRoleRequest(reqID); err != nil {
+			return nil, trace.Wrap(err)
+		}
 	}
 
 	return &proto.Certs{

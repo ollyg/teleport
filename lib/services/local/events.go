@@ -82,6 +82,8 @@ func (e *EventsService) NewWatcher(ctx context.Context, watch services.Watch) (s
 			parser = newTunnelConnectionParser()
 		case services.KindReverseTunnel:
 			parser = newReverseTunnelParser()
+		case services.KindRoleRequest:
+			parser = newRoleRequestParser()
 		default:
 			return nil, trace.BadParameter("watcher on object kind %v is not supported", kind)
 		}
@@ -476,6 +478,47 @@ func (p *roleParser) parse(event backend.Event) (services.Resource, error) {
 			services.WithResourceID(event.Item.ID),
 			services.WithExpires(event.Item.Expires),
 		)
+		if err != nil {
+			return nil, trace.Wrap(err)
+		}
+		return resource, nil
+	default:
+		return nil, trace.BadParameter("event %v is not supported", event.Type)
+	}
+}
+
+func newRoleRequestParser() *roleRequestParser {
+	return &roleRequestParser{
+		matchPrefix: backend.Key(roleRequestsPrefix),
+		matchSuffix: backend.Key(paramsPrefix),
+	}
+}
+
+type roleRequestParser struct {
+	matchPrefix []byte
+	matchSuffix []byte
+}
+
+func (p *roleRequestParser) prefix() []byte {
+	return p.matchPrefix
+}
+
+func (p *roleRequestParser) match(key []byte) bool {
+	if !bytes.HasPrefix(key, p.matchPrefix) {
+		return false
+	}
+	if !bytes.HasSuffix(key, p.matchSuffix) {
+		return false
+	}
+	return true
+}
+
+func (p *roleRequestParser) parse(event backend.Event) (services.Resource, error) {
+	switch event.Type {
+	case backend.OpDelete:
+		return resourceHeader(event, services.KindRoleRequest, services.V3, 1)
+	case backend.OpPut:
+		resource, err := itemToRoleRequest(event.Item)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}

@@ -185,6 +185,86 @@ func (g *GRPCServer) GetUsers(req *proto.GetUsersRequest, stream proto.AuthServi
 	return nil
 }
 
+func (g *GRPCServer) GetRoleRequests(ctx context.Context, _ *proto.RoleRequestGetter) (*proto.RoleRequests, error) {
+	auth, err := g.authenticate(ctx)
+	if err != nil {
+		return nil, trail.ToGRPC(err)
+	}
+	reqs, err := auth.AuthWithRoles.GetRoleRequests() // () -> []services.RoleRequest (TODO)
+	if err != nil {
+		return nil, trail.ToGRPC(err)
+	}
+	collector := make([]*services.RoleRequestV1, 0, len(reqs))
+	for _, req := range reqs {
+		r, ok := req.(*services.RoleRequestV1)
+		if !ok {
+			err = trace.BadParameter("unexpected role request type %T", req)
+			return nil, trail.ToGRPC(err)
+		}
+		collector = append(collector, r)
+	}
+	return &proto.RoleRequests{
+		RoleRequests: collector,
+	}, nil
+}
+
+func (g *GRPCServer) CreateRoleRequest(ctx context.Context, req *services.RoleRequestV1) (*empty.Empty, error) {
+	auth, err := g.authenticate(ctx)
+	if err != nil {
+		return nil, trail.ToGRPC(err)
+	}
+	if err := auth.AuthWithRoles.CreateRoleRequest(req); err != nil {
+		return nil, trail.ToGRPC(err)
+	}
+	return &empty.Empty{}, nil
+}
+
+func (g *GRPCServer) SetRoleRequestState(ctx context.Context, req *proto.RequestStateSetter) (*empty.Empty, error) {
+	auth, err := g.authenticate(ctx)
+	if err != nil {
+		return nil, trail.ToGRPC(err)
+	}
+	if err := auth.SetRoleRequestState(req.ID, req.State); err != nil {
+		return nil, trail.ToGRPC(err)
+	}
+	return &empty.Empty{}, nil
+}
+
+/*
+func (g *GRPCServer) SubmitRoleDecisions(stream proto.AuthService_SubmitRoleDecisionsServer) error {
+	auth, err := g.authenticate(stream.Context())
+	if err != nil {
+		return trail.ToGRPC(err)
+	}
+	g.Debugf("Opening role decision channel for %q", auth.User.GetName())
+	for {
+		msg, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				g.Debugf("Role decision channel closing.")
+				return nil
+			}
+			g.Debugf("Role decision channel failed: %v", err)
+			return trail.ToGRPC(err)
+		}
+		switch msg.Decision {
+		case proto.Decision_APPROVE:
+			g.Debugf("Approving role request %q", msg.ID)
+			err = auth.SetRoleRequestState(msg.ID, services.RequestState_APPROVED)
+		case proto.Decision_DENY:
+			g.Debugf("Denying role request %q", msg.ID)
+			err = auth.SetRoleRequestState(msg.ID, services.RequestState_DENIED)
+		default:
+			err = trace.BadParameter("unknown decision variant %q", msg.Decision.String())
+		}
+		if err != nil {
+			g.Debugf("Closing role decision channel: %v", err)
+			return trail.ToGRPC(err)
+		}
+	}
+}
+*/
+
 type grpcContext struct {
 	*AuthContext
 	*AuthWithRoles

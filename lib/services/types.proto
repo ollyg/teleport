@@ -371,6 +371,42 @@ message Namespace  {
 message NamespaceSpec {
 }
 
+// RoleRequest represents a role request resource specification
+message RoleRequestV1  {
+    option (gogoproto.goproto_stringer) = false;
+    option (gogoproto.stringer) = false;
+
+    // Kind is a resource kind
+    string Kind = 1 [(gogoproto.jsontag) = "kind"];
+    // SubKind is an optional resource sub kind, used in some resources
+	string SubKind = 2 [(gogoproto.jsontag) = "sub_kind,omitempty"];
+	// Version is version
+    string Version = 3 [(gogoproto.jsontag) = "version"];
+	// Metadata is RoleRequest metadata
+    Metadata Metadata = 4 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metadata"];
+    // Spec is a RoleRequest specification
+    RoleRequestSpecV1 Spec = 5 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "spec"];
+}
+
+// RequestState represents the state of a request for escalated privilege.
+enum RequestState {
+    PENDING = 0;
+    APPROVED = 1;
+    DENIED = 2;
+}
+
+// RoleRequestSpec is the specification for RoleRequest
+message RoleRequestSpecV1 {
+    // User is the name of the user to whom the roles will be applied.
+    string User = 1 [(gogoproto.jsontag) = "user"];
+    // Roles is the name of the roles being requested.
+    repeated string Roles = 2 [(gogoproto.jsontag) = "roles"];
+    // State is the current state of this role request.
+    RequestState State = 3 [(gogoproto.jsontag) = "state,omitempty"];
+    // Approved is set to true if an approval is processed.
+    //bool Approved = 3 [(gogoproto.jsontag) = "approved,omitempty"];
+}
+
 // RoleV3 represents role resource specification
 message RoleV3  {
     option (gogoproto.goproto_stringer) = false;
@@ -396,6 +432,8 @@ message RoleSpecV3 {
 	RoleConditions Allow = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "allow,omitempty"];
 	// Deny is the set of conditions evaluated to deny access. Deny takes priority over allow.
 	RoleConditions Deny = 3 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "deny,omitempty"];
+    // CanRequest is a set of conditions allowing registration of requests for escalated privilege.
+    RoleCanRequest CanRequest = 4 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "can_request,omitempty"];
 }
 
 // RoleOptions is a set of role options
@@ -444,6 +482,12 @@ message RoleConditions {
 
 	// KubeGroups is a list of kubernetes groups
 	repeated string KubeGroups = 5 [(gogoproto.jsontag) = "kubernetes_groups,omitempty"];
+}
+
+// RoleCanRequest describes permissions available "on request".
+message RoleCanRequest {
+    // Roles encodes the names of one or more roles which can be requested.
+    repeated string Roles = 1 [(gogoproto.jsontag) = "roles,omitempty"];
 }
 
 // Rule represents allow or deny rule that is executed to check

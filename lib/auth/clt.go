@@ -2530,6 +2530,124 @@ func (c *Client) DeleteTrustedCluster(name string) error {
 	return trace.Wrap(err)
 }
 
+func (c *Client) GetRoleRequests() ([]services.RoleRequest, error) {
+	clt, err := c.grpc()
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	rsp, err := clt.GetRoleRequests(context.TODO(), &proto.RoleRequestGetter{})
+	if err != nil {
+		return nil, trail.FromGRPC(err)
+	}
+	reqs := make([]services.RoleRequest, 0, len(rsp.RoleRequests))
+	for _, req := range rsp.RoleRequests {
+		reqs = append(reqs, req)
+	}
+	return reqs, nil
+}
+
+func (c *Client) CreateRoleRequest(req services.RoleRequest) error {
+	r, ok := req.(*services.RoleRequestV1)
+	if !ok {
+		return trace.BadParameter("unexpected role request type %T", req)
+	}
+	clt, err := c.grpc()
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	_, err = clt.CreateRoleRequest(context.TODO(), r)
+	if err != nil {
+		return trail.FromGRPC(err)
+	}
+	return nil
+}
+
+func (c *Client) SetRoleRequestState(reqID string, state services.RequestState) error {
+	clt, err := c.grpc()
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	_, err = clt.SetRoleRequestState(context.TODO(), &proto.RequestStateSetter{
+		ID:    reqID,
+		State: state,
+	})
+	if err != nil {
+		return trail.FromGRPC(err)
+	}
+	return nil
+}
+
+// RoleRequestWatcher monitors creation/updates of role requests.
+type RoleRequestWatcher interface {
+	RoleRequests() <-chan services.RoleRequest
+	Done() <-chan struct{}
+	Close() error
+	Error() error
+}
+
+// WatchRoleRequests encodes paramters used to
+// watch role requests.
+type WatchRoleRequests struct {
+	ID string
+}
+
+func newRoleRequestWatcher(ctx context.Context, events services.Events, watch WatchRoleRequests) (RoleRequestWatcher, error) {
+	baseWatcher, err := events.NewWatcher(ctx, services.Watch{
+		Name: "role-request-watcher",
+		Kinds: []services.WatchKind{
+			services.WatchKind{
+				Kind: services.KindRoleRequest,
+				Name: watch.ID,
+			},
+		},
+	})
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	reqC := make(chan services.RoleRequest)
+	watcher := &roleRequestWatcher{
+		Watcher: baseWatcher,
+		reqC:    reqC,
+	}
+	go watcher.handleEvents()
+	return watcher, nil
+}
+
+type roleRequestWatcher struct {
+	services.Watcher
+	reqC chan services.RoleRequest
+}
+
+func (r *roleRequestWatcher) RoleRequests() <-chan services.RoleRequest {
+	return r.reqC
+}
+
+func (r *roleRequestWatcher) handleEvents() {
+Loop:
+	for {
+		select {
+		case event := <-r.Watcher.Events():
+			switch event.Type {
+			case backend.OpInit, backend.OpPut:
+				req, ok := event.Resource.(*services.RoleRequestV1)
+				if !ok {
+					// TODO: log unexpected type
+					continue Loop
+				}
+				r.reqC <- req
+			default:
+				continue Loop
+			}
+		case <-r.Done():
+			return
+		}
+	}
+}
+
+func (c *Client) WatchRoleRequests(ctx context.Context, watch WatchRoleRequests) (RoleRequestWatcher, error) {
+	return newRoleRequestWatcher(ctx, c, watch)
+}
+
 // WebService implements features used by Web UI clients
 type WebService interface {
 	// GetWebSessionInfo checks if a web sesion is valid, returns session id in case if
@@ -2750,4 +2868,14 @@ type ClientI interface {
 	// ProcessKubeCSR processes CSR request against Kubernetes CA, returns
 	// signed certificate if sucessful.
 	ProcessKubeCSR(req KubeCSR) (*KubeCSRResponse, error)
+	// GetRoleRequests lists all existing role requests.
+	GetRoleRequests() ([]services.RoleRequest, error)
+	// CreateRoleRequest creates a new role request.
+	CreateRoleRequest(req services.RoleRequest) error
+	// SetRoleRequestState updates the state of an existing role request.
+	SetRoleRequestState(reqID string, state services.RequestState) error
+	// WatchRoleRequests builds a watcher for role-request creation/updates.
+	WatchRoleRequests(ctx context.Context, watch WatchRoleRequests) (RoleRequestWatcher, error)
+	// ManageRoleRequests initializes a role request manager.
+	//ManageRoleRequests(ctx context.Context) (RoleRequestManager, error)
 }

@@ -265,6 +265,13 @@ type Role interface {
 	GetKubeGroups(RoleConditionType) []string
 	// SetKubeGroups sets kubernetes groups for allow or deny condition.
 	SetKubeGroups(RoleConditionType, []string)
+
+	// GetRequestableRoles gets the list of roles that holders of this
+	// role are able to request.
+	GetRequestableRoles() []string
+	// SetRequestableRoles sets the list of roles that holder of this
+	// role are able to request.
+	SetRequestableRoles([]string)
 }
 
 // ApplyTraits applies the passed in traits to any variables within the role
@@ -514,6 +521,18 @@ func (r *RoleV3) SetKubeGroups(rct RoleConditionType, groups []string) {
 	} else {
 		r.Spec.Deny.KubeGroups = lcopy
 	}
+}
+
+// GetRequestableRoles gets the list of roles that holders of this
+// role are able to request.
+func (r *RoleV3) GetRequestableRoles() []string {
+	return r.Spec.CanRequest.Roles
+}
+
+// SetRequestableRoles sets the list of roles that holders of this
+// role are able to request.
+func (r *RoleV3) SetRequestableRoles(roles []string) {
+	r.Spec.CanRequest.Roles = roles
 }
 
 // GetNamespaces gets a list of namespaces this role is allowed or denied access to.
@@ -2171,7 +2190,17 @@ const RoleSpecV3SchemaTemplate = `{
       }
     },
     "allow": { "$ref": "#/definitions/role_condition" },
-    "deny": { "$ref": "#/definitions/role_condition" }%v
+    "deny": { "$ref": "#/definitions/role_condition" },
+	"can_request": {
+	  "type": "object",
+	  "additionalProperties": false,
+	  "properties": {
+	    "roles": {
+		  "type": "array",
+		  "items": { "type": "string" }
+		}
+	  }
+	}%v
   }
 }
 `
