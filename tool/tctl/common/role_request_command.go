@@ -88,7 +88,7 @@ func (c *RoleRequestCommand) TryRun(cmd string, client auth.ClientI) (match bool
 }
 
 func (c *RoleRequestCommand) List(client auth.ClientI) error {
-	reqs, err := client.GetRoleRequests()
+	reqs, err := client.GetRoleRequests(services.RoleRequestFilter{})
 	if err != nil {
 		return trace.Wrap(err)
 	}

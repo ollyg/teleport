@@ -131,9 +131,6 @@ message RequestStateSetter {
     services.RequestState State = 2 [(gogoproto.jsontag) = "state"];
 }
 
-// RoleRequestGetter is an empty message; exists for compatability reasons.
-message RoleRequestGetter {
-}
 
 // AuthService is authentication/authorization service implementation
 service AuthService {
@@ -150,7 +147,10 @@ service AuthService {
     // GetUsers gets all current user resources.
     rpc GetUsers(GetUsersRequest) returns (stream services.UserV2);
     // GetRoleRequests gets all pending role requests.
-    rpc GetRoleRequests(RoleRequestGetter) returns (RoleRequests);
+    rpc GetRoleRequests(services.RoleRequestFilter) returns (RoleRequests);
+    // WatchRoleRequests is a variant of WatchEvents which supports custom
+    // filtering options specific to role requests.
+    rpc WatchRoleRequests(services.RoleRequestFilter) returns (stream services.RoleRequestV1);
     // CreateRoleRequest creates a new role request.
     rpc CreateRoleRequest(services.RoleRequestV1) returns (google.protobuf.Empty);
     // SetRoleRequestState sets the state of a role request.

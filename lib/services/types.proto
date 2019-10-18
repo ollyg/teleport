@@ -407,6 +407,14 @@ message RoleRequestSpecV1 {
     //bool Approved = 3 [(gogoproto.jsontag) = "approved,omitempty"];
 }
 
+// RoleRequestFilter encodes filter params for role requests.
+message RoleRequestFilter {
+    // ID specifies a request ID if set.
+    string ID = 1 [(gogoproto.jsontag) = "id"];
+    // User specifies a username if set.
+    string User = 2 [(gogoproto.jsontag) = "user"];
+}
+
 // RoleV3 represents role resource specification
 message RoleV3  {
     option (gogoproto.goproto_stringer) = false;

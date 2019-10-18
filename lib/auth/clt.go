@@ -2530,12 +2530,12 @@ func (c *Client) DeleteTrustedCluster(name string) error {
 	return trace.Wrap(err)
 }
 
-func (c *Client) GetRoleRequests() ([]services.RoleRequest, error) {
+func (c *Client) GetRoleRequests(filter services.RoleRequestFilter) ([]services.RoleRequest, error) {
 	clt, err := c.grpc()
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	rsp, err := clt.GetRoleRequests(context.TODO(), &proto.RoleRequestGetter{})
+	rsp, err := clt.GetRoleRequests(context.TODO(), &filter)
 	if err != nil {
 		return nil, trail.FromGRPC(err)
 	}
@@ -2544,6 +2544,27 @@ func (c *Client) GetRoleRequests() ([]services.RoleRequest, error) {
 		reqs = append(reqs, req)
 	}
 	return reqs, nil
+}
+
+func (c *Client) WatchRoleRequests(ctx context.Context, filter services.RoleRequestFilter) (RoleRequestWatcher, error) {
+	clt, err := c.grpc()
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	cancelCtx, cancel := context.WithCancel(ctx)
+	stream, err := clt.WatchRoleRequests(cancelCtx, &filter)
+	if err != nil {
+		cancel()
+		return nil, trail.FromGRPC(err)
+	}
+	w := &roleRequestStreamWatcher{
+		stream: stream,
+		ctx:    cancelCtx,
+		cancel: cancel,
+		reqC:   make(chan services.RoleRequest),
+	}
+	go w.receiveEvents()
+	return w, nil
 }
 
 func (c *Client) CreateRoleRequest(req services.RoleRequest) error {
@@ -2585,19 +2606,64 @@ type RoleRequestWatcher interface {
 	Error() error
 }
 
-// WatchRoleRequests encodes paramters used to
-// watch role requests.
-type WatchRoleRequests struct {
-	ID string
+type roleRequestStreamWatcher struct {
+	sync.RWMutex
+	stream proto.AuthService_WatchRoleRequestsClient
+	ctx    context.Context
+	cancel context.CancelFunc
+	reqC   chan services.RoleRequest
+	err    error
 }
 
-func newRoleRequestWatcher(ctx context.Context, events services.Events, watch WatchRoleRequests) (RoleRequestWatcher, error) {
+func (w *roleRequestStreamWatcher) Error() error {
+	w.RLock()
+	defer w.RUnlock()
+	return w.err
+}
+
+func (w *roleRequestStreamWatcher) closeWithError(err error) {
+	w.Close()
+	w.Lock()
+	defer w.Unlock()
+	w.err = err
+}
+
+func (w *roleRequestStreamWatcher) RoleRequests() <-chan services.RoleRequest {
+	return w.reqC
+}
+
+func (w *roleRequestStreamWatcher) receiveEvents() {
+	for {
+		req, err := w.stream.Recv()
+		if err != nil {
+			w.closeWithError(trail.FromGRPC(err))
+			return
+		}
+		select {
+		case w.reqC <- req:
+		case <-w.Done():
+			return
+		}
+	}
+}
+
+func (w *roleRequestStreamWatcher) Done() <-chan struct{} {
+	return w.ctx.Done()
+}
+
+func (w *roleRequestStreamWatcher) Close() error {
+	w.cancel()
+	return nil
+}
+
+// newRoleRequestWatcherFromEvents builds RoleRequestWatcher from an Events service.
+func newRoleRequestWatcherFromEvents(ctx context.Context, events services.Events, filter services.RoleRequestFilter) (RoleRequestWatcher, error) {
 	baseWatcher, err := events.NewWatcher(ctx, services.Watch{
 		Name: "role-request-watcher",
 		Kinds: []services.WatchKind{
 			services.WatchKind{
 				Kind: services.KindRoleRequest,
-				Name: watch.ID,
+				Name: filter.ID,
 			},
 		},
 	})
@@ -2605,24 +2671,26 @@ func newRoleRequestWatcher(ctx context.Context, events services.Events, watch Wa
 		return nil, trace.Wrap(err)
 	}
 	reqC := make(chan services.RoleRequest)
-	watcher := &roleRequestWatcher{
+	watcher := &roleRequestEventWatcher{
 		Watcher: baseWatcher,
+		filter:  filter,
 		reqC:    reqC,
 	}
 	go watcher.handleEvents()
 	return watcher, nil
 }
 
-type roleRequestWatcher struct {
+type roleRequestEventWatcher struct {
 	services.Watcher
-	reqC chan services.RoleRequest
+	filter services.RoleRequestFilter
+	reqC   chan services.RoleRequest
 }
 
-func (r *roleRequestWatcher) RoleRequests() <-chan services.RoleRequest {
+func (r *roleRequestEventWatcher) RoleRequests() <-chan services.RoleRequest {
 	return r.reqC
 }
 
-func (r *roleRequestWatcher) handleEvents() {
+func (r *roleRequestEventWatcher) handleEvents() {
 Loop:
 	for {
 		select {
@@ -2634,6 +2702,9 @@ Loop:
 					// TODO: log unexpected type
 					continue Loop
 				}
+				if !r.filter.Match(req) {
+					continue Loop
+				}
 				r.reqC <- req
 			default:
 				continue Loop
@@ -2642,10 +2713,6 @@ Loop:
 			return
 		}
 	}
-}
-
-func (c *Client) WatchRoleRequests(ctx context.Context, watch WatchRoleRequests) (RoleRequestWatcher, error) {
-	return newRoleRequestWatcher(ctx, c, watch)
 }
 
 // WebService implements features used by Web UI clients
@@ -2869,13 +2936,11 @@ type ClientI interface {
 	// signed certificate if sucessful.
 	ProcessKubeCSR(req KubeCSR) (*KubeCSRResponse, error)
 	// GetRoleRequests lists all existing role requests.
-	GetRoleRequests() ([]services.RoleRequest, error)
+	GetRoleRequests(services.RoleRequestFilter) ([]services.RoleRequest, error)
+	// WatchRoleRequests sets up a specialized role request watcher.
+	WatchRoleRequests(ctx context.Context, filter services.RoleRequestFilter) (RoleRequestWatcher, error)
 	// CreateRoleRequest creates a new role request.
 	CreateRoleRequest(req services.RoleRequest) error
 	// SetRoleRequestState updates the state of an existing role request.
 	SetRoleRequestState(reqID string, state services.RequestState) error
-	// WatchRoleRequests builds a watcher for role-request creation/updates.
-	WatchRoleRequests(ctx context.Context, watch WatchRoleRequests) (RoleRequestWatcher, error)
-	// ManageRoleRequests initializes a role request manager.
-	//ManageRoleRequests(ctx context.Context) (RoleRequestManager, error)
 }

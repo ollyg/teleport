@@ -781,17 +781,35 @@ func (a *AuthWithRoles) DeleteWebSession(user string, sid string) error {
 	return a.authServer.DeleteWebSession(user, sid)
 }
 
-func (a *AuthWithRoles) GetRoleRequests() ([]services.RoleRequest, error) {
+func (a *AuthWithRoles) GetRoleRequests(filter services.RoleRequestFilter) ([]services.RoleRequest, error) {
 	// Currently, RoleRequests are scoped under "KindUser" permissions, because
 	// KindUser permissions effectively grant the same powers (access to the names
 	// of users and roles, and the ability to apply roles to users).
-	if err := a.action(defaults.Namespace, services.KindUser, services.VerbList); err != nil {
+	if filter.User == "" || a.currentUserAction(filter.User) != nil {
+		if err := a.action(defaults.Namespace, services.KindUser, services.VerbList); err != nil {
+			return nil, trace.Wrap(err)
+		}
+		if err := a.action(defaults.Namespace, services.KindUser, services.VerbRead); err != nil {
+			return nil, trace.Wrap(err)
+		}
+	}
+	return a.authServer.GetRoleRequests(filter)
+}
+
+func (a *AuthWithRoles) WatchRoleRequests(ctx context.Context, filter services.RoleRequestFilter) (RoleRequestWatcher, error) {
+	if filter.User == "" || a.currentUserAction(filter.User) != nil {
+		if err := a.action(defaults.Namespace, services.KindUser, services.VerbList); err != nil {
+			return nil, trace.Wrap(err)
+		}
+		if err := a.action(defaults.Namespace, services.KindUser, services.VerbRead); err != nil {
+			return nil, trace.Wrap(err)
+		}
+	}
+	watcher, err := newRoleRequestWatcherFromEvents(ctx, a.authServer, filter)
+	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	if err := a.action(defaults.Namespace, services.KindUser, services.VerbRead); err != nil {
-		return nil, trace.Wrap(err)
-	}
-	return a.authServer.GetRoleRequests()
+	return watcher, nil
 }
 
 func (a *AuthWithRoles) CreateRoleRequest(req services.RoleRequest) error {
@@ -817,10 +835,6 @@ func (a *AuthWithRoles) DeleteRoleRequest(name string) error {
 		return trace.Wrap(err)
 	}
 	return a.authServer.DeleteRoleRequest(name)
-}
-
-func (a *AuthWithRoles) WatchRoleRequests(ctx context.Context, watch WatchRoleRequests) (RoleRequestWatcher, error) {
-	return newRoleRequestWatcher(ctx, a, watch)
 }
 
 func (a *AuthWithRoles) GetUsers(withSecrets bool) ([]services.User, error) {
@@ -953,25 +967,38 @@ func (a *AuthWithRoles) GenerateUserCerts(ctx context.Context, req proto.UserCer
 		return nil, trace.AccessDenied("this request can be only executed by an admin")
 	}
 
-	// add any applicable role request values.
-	for _, reqID := range req.RoleRequests {
-		roleReq, err := a.authServer.GetRoleRequest(reqID)
-		if err != nil {
-			if trace.IsNotFound(err) {
+	if len(req.RoleRequests) > 0 {
+		// add any applicable role request values.
+		for _, reqID := range req.RoleRequests {
+			roleReq, err := a.authServer.GetRoleRequest(reqID)
+			if err != nil {
+				if trace.IsNotFound(err) {
+					return nil, trace.AccessDenied("invalid role request %q", reqID)
+				}
+				return nil, trace.Wrap(err)
+			}
+			if roleReq.GetUser() != req.Username {
 				return nil, trace.AccessDenied("invalid role request %q", reqID)
 			}
-			return nil, trace.Wrap(err)
+			if !roleReq.GetState().IsApproved() {
+				return nil, trace.AccessDenied("role-request %q is awaiting approval", reqID)
+			}
+			if err := a.authServer.validateRoleRequest(roleReq); err != nil {
+				return nil, trace.Wrap(err)
+			}
+			rexp := roleReq.Expiry()
+			if rexp.Before(a.authServer.GetClock().Now()) {
+				return nil, trace.AccessDenied("role-request %q is expired", reqID)
+			}
+			if rexp.Before(req.Expires) {
+				// cannot generate a cert that would outlive the role request
+				req.Expires = rexp
+			}
+			roles = append(roles, roleReq.GetRoles()...)
 		}
-		if roleReq.GetUser() != req.Username {
-			return nil, trace.AccessDenied("invalid role request %q", reqID)
-		}
-		if !roleReq.GetState().IsApproved() {
-			return nil, trace.AccessDenied("role-request %q is awaiting approval", reqID)
-		}
-		if err := a.authServer.validateRoleRequest(roleReq); err != nil {
-			return nil, trace.Wrap(err)
-		}
-		roles = append(roles, roleReq.GetRoles()...)
+		// nothing prevents a role-request from including roles already posessed by the
+		// user, so we must make sure to trim duplicate roles.
+		roles = utils.Deduplicate(roles)
 	}
 
 	// Extract the user and role set for whom the certificate will be generated.
@@ -995,17 +1022,12 @@ func (a *AuthWithRoles) GenerateUserCerts(ctx context.Context, req proto.UserCer
 		routeToCluster:  req.RouteToCluster,
 		checker:         checker,
 		traits:          traits,
+		activeRequests: services.RequestIDs{
+			RoleRequests: req.RoleRequests,
+		},
 	})
 	if err != nil {
 		return nil, trace.Wrap(err)
-	}
-
-	// successfully built certificate, consume role requests to prevent
-	// double-usage.
-	for _, reqID := range req.RoleRequests {
-		if err := a.authServer.DeleteRoleRequest(reqID); err != nil {
-			return nil, trace.Wrap(err)
-		}
 	}
 
 	return &proto.Certs{

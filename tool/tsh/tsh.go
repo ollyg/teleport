@@ -66,6 +66,12 @@ type CLIConf struct {
 	UserHost string
 	// Commands to execute on a remote host
 	RemoteCommand []string
+	// RoleRequest indicates an approved role request.
+	RoleRequest string
+	// DesiredRoles indicates one or more roles which should be requested.
+	DesiredRoles string
+	// RoleRequests indicates one or more approved role requests.
+	RoleRequests []string
 	// Username is the Teleport user's username (to login into proxies)
 	Username string
 	// Proxy keeps the hostname:port of the SSH proxy to use
@@ -268,10 +274,27 @@ func Run(args []string, underTest bool) {
 		client.DefaultIdentityFormat,
 		client.IdentityFormatOpenSSH)).Default(string(client.DefaultIdentityFormat)).StringVar((*string)(&cf.IdentityFormat))
 	login.Arg("cluster", clusterHelp).StringVar(&cf.SiteName)
+	login.Flag("with-role-request", "Request ID of approved role request(s)").StringVar(&cf.RoleRequest)
 	login.Alias(loginUsageFooter)
 
 	// logout deletes obtained session certificates in ~/.tsh
 	logout := app.Command("logout", "Delete a cluster certificate")
+
+	request := app.Command("request", "Manage requests for escalated privilege")
+
+	requestExecute := request.Command("execute", "Execute a request for escalated privilege")
+	requestExecute.Flag("roles", "Specify one or more roles to be requested").Required().StringVar(&cf.DesiredRoles)
+	requestExecute.Flag("cluster", clusterHelp).Envar(clusterEnvVar).StringVar(&cf.SiteName)
+
+	requestCreate := request.Command("create", "Create a new request for escalated privilege")
+	requestCreate.Flag("roles", "Specify one or more roles to be requested").Required().StringVar(&cf.DesiredRoles)
+	requestCreate.Flag("cluster", clusterHelp).Envar(clusterEnvVar).StringVar(&cf.SiteName)
+
+	requestApply := request.Command("apply", "Apply an approved request to the current session")
+	requestApply.Arg("request", "Request ID of approved role request(s)").Required().StringsVar(&cf.RoleRequests)
+	requestApply.Flag("cluster", clusterHelp).Envar(clusterEnvVar).StringVar(&cf.SiteName)
+
+	requestList := request.Command("ls", "List all pending requests")
 
 	// bench
 	bench := app.Command("bench", "Run shell or execute a command on a remote SSH node").Hidden()
@@ -356,6 +379,14 @@ func Run(args []string, underTest bool) {
 	case logout.FullCommand():
 		refuseArgs(logout.FullCommand(), args)
 		onLogout(&cf)
+	case requestExecute.FullCommand():
+		onRequestExecute(&cf)
+	case requestCreate.FullCommand():
+		onRequestCreate(&cf)
+	case requestApply.FullCommand():
+		onRequestApply(&cf)
+	case requestList.FullCommand():
+		onRequestList(&cf)
 	case show.FullCommand():
 		onShow(&cf)
 	case status.FullCommand():
@@ -370,6 +401,94 @@ func onPlay(cf *CLIConf) {
 		utils.FatalError(err)
 	}
 	if err := tc.Play(context.TODO(), cf.Namespace, cf.SessionID); err != nil {
+		utils.FatalError(err)
+	}
+}
+
+func onRequestCreate(cf *CLIConf) {
+	if cf.DesiredRoles == "" {
+		utils.FatalError(trace.BadParameter("one or more roles must be specified"))
+	}
+	roles := strings.Split(cf.DesiredRoles, ",")
+	tc, err := makeClient(cf, true)
+	if err != nil {
+		utils.FatalError(err)
+	}
+	if cf.Username == "" {
+		cf.Username = tc.Username
+	}
+	req, err := services.NewRoleRequest(cf.Username, roles...)
+	if err != nil {
+		utils.FatalError(err)
+	}
+	if err := tc.CreateRoleRequest(context.TODO(), req); err != nil {
+		utils.FatalError(err)
+	}
+	fmt.Println(req.GetName())
+}
+
+func onRequestExecute(cf *CLIConf) {
+	if cf.DesiredRoles == "" {
+		utils.FatalError(trace.BadParameter("one or more roles must be specified"))
+	}
+	roles := strings.Split(cf.DesiredRoles, ",")
+	tc, err := makeClient(cf, true)
+	if err != nil {
+		utils.FatalError(err)
+	}
+	if cf.Username == "" {
+		cf.Username = tc.Username
+	}
+	req, err := services.NewRoleRequest(cf.Username, roles...)
+	if err != nil {
+		utils.FatalError(err)
+	}
+	fmt.Fprintf(os.Stderr, "Seeking request approval... (id: %s)\n", req.GetName())
+	if err := getRequestApproval(cf, tc, req); err != nil {
+		utils.FatalError(err)
+	}
+	fmt.Fprintf(os.Stderr, "Approval received, getting updated certificates...\n\n")
+	if err := reissueWithRequests(cf, tc, req.GetName()); err != nil {
+		utils.FatalError(err)
+	}
+	onStatus(cf)
+}
+
+func onRequestApply(cf *CLIConf) {
+	if len(cf.RoleRequests) < 1 {
+		utils.FatalError(trace.BadParameter("one or more request ids must be specified"))
+	}
+	tc, err := makeClient(cf, true)
+	if err != nil {
+		utils.FatalError(err)
+	}
+	if err := reissueWithRequests(cf, tc, cf.RoleRequests...); err != nil {
+		utils.FatalError(err)
+	}
+	onStatus(cf)
+}
+
+func onRequestList(cf *CLIConf) {
+	tc, err := makeClient(cf, true)
+	if err != nil {
+		utils.FatalError(err)
+	}
+	reqs, err := tc.GetRoleRequests(context.TODO(), services.RoleRequestFilter{
+		User: tc.Username,
+	})
+	if err != nil {
+		utils.FatalError(err)
+	}
+	table := asciitable.MakeTable([]string{"ID", "role(s)", "state"})
+	for _, req := range reqs {
+		table.AddRow([]string{
+			req.GetName(),
+			strings.Join(req.GetRoles(), ","),
+			req.GetState().String(),
+		})
+	}
+	_, err = table.AsBuffer().WriteTo(os.Stdout)
+	if err != nil {
 		utils.FatalError(err)
 	}
 }
@@ -426,8 +545,18 @@ func onLogin(cf *CLIConf) {
 		// proxy is unspecified or the same as the currently provided proxy,
 		// but cluster is specified, treat this as selecting a new cluster
 		// for the same proxy
-		case (cf.Proxy == "" || host(cf.Proxy) == host(profile.ProxyURL.Host)) && cf.SiteName != "":
-			if err := tc.GenerateCertsForCluster(cf.Context, cf.SiteName); err != nil {
+		case (cf.Proxy == "" || host(cf.Proxy) == host(profile.ProxyURL.Host)) && (cf.SiteName != "" || cf.RoleRequest != ""):
+			var params client.ReissueParams
+			if cf.SiteName != "" {
+				params.RouteToCluster = cf.SiteName
+			}
+			if cf.RoleRequest != "" {
+				params.RoleRequests = strings.Split(cf.RoleRequest, ",")
+			}
+			if len(profile.ActiveRequests.RoleRequests) > 0 {
+				params.RoleRequests = append(params.RoleRequests, profile.ActiveRequests.RoleRequests...)
+			}
+			if err := tc.ReissueUserCerts(cf.Context, params); err != nil {
 				utils.FatalError(err)
 			}
 			tc.SaveProfile("", "")
@@ -1334,4 +1463,65 @@ func host(in string) string {
 		return in
 	}
 	return out
+}
+
+// getRequestApproval registers a role request with the auth server and waits for it to be approved.
+func getRequestApproval(cf *CLIConf, tc *client.TeleportClient, req services.RoleRequest) error {
+	// set up request watcher before submitting the request to the admin server
+	// in order to avoid potential race.
+	watcher, err := tc.WatchRoleRequests(cf.Context, services.RoleRequestFilter{
+		User: cf.Username,
+	})
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	defer watcher.Close()
+	if err := tc.CreateRoleRequest(cf.Context, req); err != nil {
+		utils.FatalError(err)
+	}
+Loop:
+	for {
+		select {
+		case r := <-watcher.RoleRequests():
+			if r.GetName() != req.GetName() || r.GetState().IsPending() {
+				continue Loop
+			}
+			if !r.GetState().IsApproved() {
+				return trace.Errorf("request %s has been set to %s", r.GetName(), r.GetState().String())
+			}
+			return nil
+		case <-watcher.Done():
+			utils.FatalError(watcher.Error())
+		}
+	}
+}
+
+// reissueWithRequests handles a certificate reissue, applying new requests by ID,
+// and saving the updated profile.
+func reissueWithRequests(cf *CLIConf, tc *client.TeleportClient, reqIDs ...string) error {
+	profile, _, err := client.Status("", cf.Proxy)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	params := client.ReissueParams{
+		RoleRequests:   reqIDs,
+		RouteToCluster: cf.SiteName,
+	}
+	// if the certificate already had active requests, add them to our inputs parameters.
+	if len(profile.ActiveRequests.RoleRequests) > 0 {
+		params.RoleRequests = append(params.RoleRequests, profile.ActiveRequests.RoleRequests...)
+	}
+	if params.RouteToCluster == "" {
+		params.RouteToCluster = profile.Cluster
+	}
+	if err := tc.ReissueUserCerts(cf.Context, params); err != nil {
+		return trace.Wrap(err)
+	}
+	if err := tc.SaveProfile("", ""); err != nil {
+		return trace.Wrap(err)
+	}
+	if err := kubeclient.UpdateKubeconfig(tc); err != nil {
+		return trace.Wrap(err)
+	}
+	return nil
 }

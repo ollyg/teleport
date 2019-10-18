@@ -413,6 +413,9 @@ type certRequest struct {
 	routeToCluster string
 	// traits hold claim data used to populate a role at runtime.
 	traits wrappers.Traits
+	// activeRequests tracks privilege escalation requests applied
+	// during the construction of the certificate.
+	activeRequests services.RequestIDs
 }
 
 // GenerateUserTestCerts is used to generate user certificate, used internally for tests
@@ -514,6 +517,7 @@ func (s *AuthServer) generateUserCert(req certRequest) (*certs, error) {
 		PermitAgentForwarding: req.checker.CanForwardAgents(),
 		RouteToCluster:        req.routeToCluster,
 		Traits:                req.traits,
+		ActiveRequests:        req.activeRequests,
 	})
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -1359,6 +1363,11 @@ func (a *AuthServer) CreateRoleRequest(req services.RoleRequest) error {
 	if err := a.validateRoleRequest(req); err != nil {
 		return trace.Wrap(err)
 	}
+	ttl, err := a.calculateRoleRequestTTL(req)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	req.SetTTL(a.clock, ttl)
 	return a.DynamicAccess.CreateRoleRequest(req)
 }
 
@@ -1388,6 +1397,25 @@ func (a *AuthServer) validateRoleRequest(req services.RoleRequest) error {
 		return trace.NotFound("no rule allows user %q to request role %q", req.GetUser(), r)
 	}
 	return nil
+}
+
+// calculateRoleRequestTTL determines the maximum allowable TTL for a given role request
+// based on the MaxSessionTTLs of the roles being requested (a role request's life cannot
+// exceed the smallest allowable MaxSessionTTL value of the roles that it requests).
+func (a *AuthServer) calculateRoleRequestTTL(req services.RoleRequest) (time.Duration, error) {
+	const MaxRoleRequestTTL = 20 * time.Hour
+	minTTL := MaxRoleRequestTTL
+	for _, roleName := range req.GetRoles() {
+		role, err := a.GetRole(roleName)
+		if err != nil {
+			return 0, trace.Wrap(err)
+		}
+		roleTTL := time.Duration(role.GetOptions().MaxSessionTTL)
+		if roleTTL > 0 && roleTTL < minTTL {
+			minTTL = roleTTL
+		}
+	}
+	return minTTL, nil
 }
 
 // NewKeepAliver returns a new instance of keep aliver

@@ -185,12 +185,16 @@ func (g *GRPCServer) GetUsers(req *proto.GetUsersRequest, stream proto.AuthServi
 	return nil
 }
 
-func (g *GRPCServer) GetRoleRequests(ctx context.Context, _ *proto.RoleRequestGetter) (*proto.RoleRequests, error) {
+func (g *GRPCServer) GetRoleRequests(ctx context.Context, f *services.RoleRequestFilter) (*proto.RoleRequests, error) {
 	auth, err := g.authenticate(ctx)
 	if err != nil {
 		return nil, trail.ToGRPC(err)
 	}
-	reqs, err := auth.AuthWithRoles.GetRoleRequests() // () -> []services.RoleRequest (TODO)
+	var filter services.RoleRequestFilter
+	if f != nil {
+		filter = *f
+	}
+	reqs, err := auth.AuthWithRoles.GetRoleRequests(filter)
 	if err != nil {
 		return nil, trail.ToGRPC(err)
 	}
@@ -206,6 +210,39 @@ func (g *GRPCServer) GetRoleRequests(ctx context.Context, _ *proto.RoleRequestGe
 	return &proto.RoleRequests{
 		RoleRequests: collector,
 	}, nil
+}
+
+func (g *GRPCServer) WatchRoleRequests(f *services.RoleRequestFilter, stream proto.AuthService_WatchRoleRequestsServer) error {
+	auth, err := g.authenticate(stream.Context())
+	if err != nil {
+		return trail.ToGRPC(err)
+	}
+	var filter services.RoleRequestFilter
+	if f != nil {
+		filter = *f
+	}
+
+	watcher, err := auth.WatchRoleRequests(stream.Context(), filter)
+	if err != nil {
+		return trail.ToGRPC(err)
+	}
+	defer watcher.Close()
+	for {
+		select {
+		case <-stream.Context().Done():
+			return nil
+		case <-watcher.Done():
+			return trail.ToGRPC(watcher.Error())
+		case r := <-watcher.RoleRequests():
+			req, ok := r.(*services.RoleRequestV1)
+			if !ok {
+				return trail.ToGRPC(trace.BadParameter("unexpected request type %T", r))
+			}
+			if err := stream.Send(req); err != nil {
+				return trail.ToGRPC(err)
+			}
+		}
+	}
 }
 
 func (g *GRPCServer) CreateRoleRequest(ctx context.Context, req *services.RoleRequestV1) (*empty.Empty, error) {

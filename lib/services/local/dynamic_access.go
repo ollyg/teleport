@@ -90,7 +90,7 @@ func (s *AccessService) GetRoleRequest(name string) (services.RoleRequest, error
 	return req, nil
 }
 
-func (s *AccessService) GetRoleRequests() ([]services.RoleRequest, error) {
+func (s *AccessService) GetRoleRequests(filter services.RoleRequestFilter) ([]services.RoleRequest, error) {
 	result, err := s.GetRange(context.TODO(), backend.Key(roleRequestsPrefix), backend.RangeEnd(backend.Key(roleRequestsPrefix)), backend.NoLimit)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -103,6 +103,11 @@ func (s *AccessService) GetRoleRequests() ([]services.RoleRequest, error) {
 		req, err := itemToRoleRequest(item)
 		if err != nil {
 			return nil, trace.Wrap(err)
+		}
+		if !filter.Match(req) {
+			// TODO(fspmarshall): optimize filtering to
+			// avoid full query/iteration in some cases.
+			continue
 		}
 		requests = append(requests, req)
 	}

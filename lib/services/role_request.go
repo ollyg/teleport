@@ -28,6 +28,50 @@ import (
 	"github.com/pborman/uuid"
 )
 
+// RequestIDs is a collection of IDs for privelege escalation requests.
+type RequestIDs struct {
+	RoleRequests []string `json:"role_requests,omitempty"`
+}
+
+func (r *RequestIDs) Marshal() ([]byte, error) {
+	data, err := utils.FastMarshal(r)
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return data, nil
+}
+
+func (r *RequestIDs) Unmarshal(data []byte) error {
+	if err := utils.FastUnmarshal(data, r); err != nil {
+		return trace.Wrap(err)
+	}
+	return trace.Wrap(r.Check())
+}
+
+func (r *RequestIDs) Check() error {
+	for _, id := range r.RoleRequests {
+		if uuid.Parse(id) == nil {
+			return trace.BadParameter("invalid request id %q", id)
+		}
+	}
+	return nil
+}
+
+func (r *RequestIDs) IsEmpty() bool {
+	return len(r.RoleRequests) < 1
+}
+
+// Match checks if a given role request matchers this filter.
+func (f *RoleRequestFilter) Match(req RoleRequest) bool {
+	if f.ID != "" && req.GetName() != f.ID {
+		return false
+	}
+	if f.User != "" && req.GetUser() != f.User {
+		return false
+	}
+	return true
+}
+
 // DynamicAccess is a service which manages dynamic RBAC.
 type DynamicAccess interface {
 	// CreateRoleRequest stores a new role request.
@@ -37,7 +81,7 @@ type DynamicAccess interface {
 	// GetRoleRequest gets a role request by name (uuid).
 	GetRoleRequest(string) (RoleRequest, error)
 	// GetRoleRequests gets all currently active role requests.
-	GetRoleRequests() ([]RoleRequest, error)
+	GetRoleRequests(RoleRequestFilter) ([]RoleRequest, error)
 	// DeleteRoleRequest deletes a role request.
 	DeleteRoleRequest(string) error
 }
@@ -131,7 +175,10 @@ func (r *RoleRequestV1) Check() error {
 		return trace.BadParameter("role request version not set")
 	}
 	if r.GetName() == "" {
-		return trace.BadParameter("role request name not set")
+		return trace.BadParameter("role request id not set")
+	}
+	if uuid.Parse(r.GetName()) == nil {
+		return trace.BadParameter("invalid role request id %q", r.GetName())
 	}
 	if r.GetUser() == "" {
 		return trace.BadParameter("role request user name not set")
