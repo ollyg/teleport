@@ -271,6 +271,7 @@ func Run(args []string, underTest bool) {
 	login.Flag("format", fmt.Sprintf("Identity format [%s] or %s (for OpenSSH compatibility)",
 		client.DefaultIdentityFormat,
 		client.IdentityFormatOpenSSH)).Default(string(client.DefaultIdentityFormat)).StringVar((*string)(&cf.IdentityFormat))
+	login.Flag("request-roles", "Request one or more extra roles").StringVar(&cf.DesiredRoles)
 	login.Arg("cluster", clusterHelp).StringVar(&cf.SiteName)
 	login.Alias(loginUsageFooter)
 
@@ -532,18 +533,23 @@ func onLogin(cf *CLIConf) {
 	if profile != nil && !profile.IsExpired(clockwork.NewRealClock()) {
 		switch {
 		// in case if nothing is specified, print current status
-		case cf.Proxy == "" && cf.SiteName == "":
+		case cf.Proxy == "" && cf.SiteName == "" && cf.DesiredRoles == "":
 			printProfiles(cf.Debug, profile, profiles)
 			return
 		// in case if parameters match, print current status
-		case host(cf.Proxy) == host(profile.ProxyURL.Host) && cf.SiteName == profile.Cluster:
+		case host(cf.Proxy) == host(profile.ProxyURL.Host) && cf.SiteName == profile.Cluster && cf.DesiredRoles == "":
 			printProfiles(cf.Debug, profile, profiles)
 			return
 		// proxy is unspecified or the same as the currently provided proxy,
 		// but cluster is specified, treat this as selecting a new cluster
 		// for the same proxy
 		case (cf.Proxy == "" || host(cf.Proxy) == host(profile.ProxyURL.Host)) && cf.SiteName != "":
-			if err := tc.GenerateCertsForCluster(cf.Context, cf.SiteName); err != nil {
+			// trigger reissue, preserving any active requests.
+			err = tc.ReissueUserCerts(cf.Context, client.ReissueParams{
+				RoleRequests:   profile.ActiveRequests.RoleRequests,
+				RouteToCluster: cf.SiteName,
+			})
+			if err != nil {
 				utils.FatalError(err)
 			}
 			tc.SaveProfile("", "")
@@ -551,6 +557,12 @@ func onLogin(cf *CLIConf) {
 				utils.FatalError(err)
 			}
 			onStatus(cf)
+			return
+		// proxy is unspecified or the same as the currently provided proxy,
+		// but desired roles are specified, treat this as a privilege escalation
+		// request for the same login session.
+		case (cf.Proxy == "" || host(cf.Proxy) == host(profile.ProxyURL.Host)) && cf.DesiredRoles != "":
+			onRequestExecute(cf)
 			return
 		// otherwise just passthrough to standard login
 		default:
@@ -598,7 +610,12 @@ func onLogin(cf *CLIConf) {
 	// advertised settings are picked up.
 	webProxyHost, _ := tc.WebProxyHostPort()
 	cf.Proxy = webProxyHost
-	onStatus(cf)
+	if cf.DesiredRoles != "" {
+		fmt.Println("") // visually separate onRequestExecute output
+		onRequestExecute(cf)
+	} else {
+		onStatus(cf)
+	}
 }
 
 // setupNoninteractiveClient sets up existing client to use
