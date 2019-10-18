@@ -66,8 +66,6 @@ type CLIConf struct {
 	UserHost string
 	// Commands to execute on a remote host
 	RemoteCommand []string
-	// RoleRequest indicates an approved role request.
-	RoleRequest string
 	// DesiredRoles indicates one or more roles which should be requested.
 	DesiredRoles string
 	// RoleRequests indicates one or more approved role requests.
@@ -274,7 +272,6 @@ func Run(args []string, underTest bool) {
 		client.DefaultIdentityFormat,
 		client.IdentityFormatOpenSSH)).Default(string(client.DefaultIdentityFormat)).StringVar((*string)(&cf.IdentityFormat))
 	login.Arg("cluster", clusterHelp).StringVar(&cf.SiteName)
-	login.Flag("with-role-request", "Request ID of approved role request(s)").StringVar(&cf.RoleRequest)
 	login.Alias(loginUsageFooter)
 
 	// logout deletes obtained session certificates in ~/.tsh
@@ -545,18 +542,8 @@ func onLogin(cf *CLIConf) {
 		// proxy is unspecified or the same as the currently provided proxy,
 		// but cluster is specified, treat this as selecting a new cluster
 		// for the same proxy
-		case (cf.Proxy == "" || host(cf.Proxy) == host(profile.ProxyURL.Host)) && (cf.SiteName != "" || cf.RoleRequest != ""):
-			var params client.ReissueParams
-			if cf.SiteName != "" {
-				params.RouteToCluster = cf.SiteName
-			}
-			if cf.RoleRequest != "" {
-				params.RoleRequests = strings.Split(cf.RoleRequest, ",")
-			}
-			if len(profile.ActiveRequests.RoleRequests) > 0 {
-				params.RoleRequests = append(params.RoleRequests, profile.ActiveRequests.RoleRequests...)
-			}
-			if err := tc.ReissueUserCerts(cf.Context, params); err != nil {
+		case (cf.Proxy == "" || host(cf.Proxy) == host(profile.ProxyURL.Host)) && cf.SiteName != "":
+			if err := tc.GenerateCertsForCluster(cf.Context, cf.SiteName); err != nil {
 				utils.FatalError(err)
 			}
 			tc.SaveProfile("", "")
