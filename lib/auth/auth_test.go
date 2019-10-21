@@ -106,7 +106,7 @@ func (s *AuthSuite) TearDownTest(c *C) {
 	}
 }
 
-func (s *AuthSuite) TestRoleRequests(c *C) {
+func (s *AuthSuite) TestAccessRequests(c *C) {
 	c.Assert(s.a.UpsertCertAuthority(
 		suite.NewTestCA(services.UserCA, "me.localhost")), IsNil)
 
@@ -116,10 +116,10 @@ func (s *AuthSuite) TestRoleRequests(c *C) {
 	role := "some-role"
 	_, err := CreateUserRoleAndRequestable(s.a, user, role)
 	c.Assert(err, IsNil)
-	req, err := services.NewRoleRequest(user, role)
+	req, err := services.NewAccessRequest(user, role)
 	c.Assert(err, IsNil)
-	c.Assert(s.a.CreateRoleRequest(req), IsNil)
-	c.Assert(s.a.SetRoleRequestState(req.GetName(), services.RequestState_APPROVED), IsNil)
+	c.Assert(s.a.CreateAccessRequest(req), IsNil)
+	c.Assert(s.a.SetAccessRequestState(req.GetName(), services.RequestState_APPROVED), IsNil)
 }
 
 func (s *AuthSuite) TestSessions(c *C) {

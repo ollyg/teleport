@@ -185,44 +185,44 @@ func (g *GRPCServer) GetUsers(req *proto.GetUsersRequest, stream proto.AuthServi
 	return nil
 }
 
-func (g *GRPCServer) GetRoleRequests(ctx context.Context, f *services.RoleRequestFilter) (*proto.RoleRequests, error) {
+func (g *GRPCServer) GetAccessRequests(ctx context.Context, f *services.AccessRequestFilter) (*proto.AccessRequests, error) {
 	auth, err := g.authenticate(ctx)
 	if err != nil {
 		return nil, trail.ToGRPC(err)
 	}
-	var filter services.RoleRequestFilter
+	var filter services.AccessRequestFilter
 	if f != nil {
 		filter = *f
 	}
-	reqs, err := auth.AuthWithRoles.GetRoleRequests(filter)
+	reqs, err := auth.AuthWithRoles.GetAccessRequests(filter)
 	if err != nil {
 		return nil, trail.ToGRPC(err)
 	}
-	collector := make([]*services.RoleRequestV1, 0, len(reqs))
+	collector := make([]*services.AccessRequestV1, 0, len(reqs))
 	for _, req := range reqs {
-		r, ok := req.(*services.RoleRequestV1)
+		r, ok := req.(*services.AccessRequestV1)
 		if !ok {
-			err = trace.BadParameter("unexpected role request type %T", req)
+			err = trace.BadParameter("unexpected access request type %T", req)
 			return nil, trail.ToGRPC(err)
 		}
 		collector = append(collector, r)
 	}
-	return &proto.RoleRequests{
-		RoleRequests: collector,
+	return &proto.AccessRequests{
+		AccessRequests: collector,
 	}, nil
 }
 
-func (g *GRPCServer) WatchRoleRequests(f *services.RoleRequestFilter, stream proto.AuthService_WatchRoleRequestsServer) error {
+func (g *GRPCServer) WatchAccessRequests(f *services.AccessRequestFilter, stream proto.AuthService_WatchAccessRequestsServer) error {
 	auth, err := g.authenticate(stream.Context())
 	if err != nil {
 		return trail.ToGRPC(err)
 	}
-	var filter services.RoleRequestFilter
+	var filter services.AccessRequestFilter
 	if f != nil {
 		filter = *f
 	}
 
-	watcher, err := auth.WatchRoleRequests(stream.Context(), filter)
+	watcher, err := auth.WatchAccessRequests(stream.Context(), filter)
 	if err != nil {
 		return trail.ToGRPC(err)
 	}
@@ -233,8 +233,8 @@ func (g *GRPCServer) WatchRoleRequests(f *services.RoleRequestFilter, stream pro
 			return nil
 		case <-watcher.Done():
 			return trail.ToGRPC(watcher.Error())
-		case r := <-watcher.RoleRequests():
-			req, ok := r.(*services.RoleRequestV1)
+		case r := <-watcher.AccessRequests():
+			req, ok := r.(*services.AccessRequestV1)
 			if !ok {
 				return trail.ToGRPC(trace.BadParameter("unexpected request type %T", r))
 			}
@@ -245,34 +245,34 @@ func (g *GRPCServer) WatchRoleRequests(f *services.RoleRequestFilter, stream pro
 	}
 }
 
-func (g *GRPCServer) CreateRoleRequest(ctx context.Context, req *services.RoleRequestV1) (*empty.Empty, error) {
+func (g *GRPCServer) CreateAccessRequest(ctx context.Context, req *services.AccessRequestV1) (*empty.Empty, error) {
 	auth, err := g.authenticate(ctx)
 	if err != nil {
 		return nil, trail.ToGRPC(err)
 	}
-	if err := auth.AuthWithRoles.CreateRoleRequest(req); err != nil {
+	if err := auth.AuthWithRoles.CreateAccessRequest(req); err != nil {
 		return nil, trail.ToGRPC(err)
 	}
 	return &empty.Empty{}, nil
 }
 
-func (g *GRPCServer) DeleteRoleRequest(ctx context.Context, id *proto.RequestID) (*empty.Empty, error) {
+func (g *GRPCServer) DeleteAccessRequest(ctx context.Context, id *proto.RequestID) (*empty.Empty, error) {
 	auth, err := g.authenticate(ctx)
 	if err != nil {
 		return nil, trail.ToGRPC(err)
 	}
-	if err := auth.AuthWithRoles.DeleteRoleRequest(id.ID); err != nil {
+	if err := auth.AuthWithRoles.DeleteAccessRequest(id.ID); err != nil {
 		return nil, trail.ToGRPC(err)
 	}
 	return &empty.Empty{}, nil
 }
 
-func (g *GRPCServer) SetRoleRequestState(ctx context.Context, req *proto.RequestStateSetter) (*empty.Empty, error) {
+func (g *GRPCServer) SetAccessRequestState(ctx context.Context, req *proto.RequestStateSetter) (*empty.Empty, error) {
 	auth, err := g.authenticate(ctx)
 	if err != nil {
 		return nil, trail.ToGRPC(err)
 	}
-	if err := auth.SetRoleRequestState(req.ID, req.State); err != nil {
+	if err := auth.SetAccessRequestState(req.ID, req.State); err != nil {
 		return nil, trail.ToGRPC(err)
 	}
 	return &empty.Empty{}, nil
@@ -297,11 +297,11 @@ func (g *GRPCServer) SubmitRoleDecisions(stream proto.AuthService_SubmitRoleDeci
 		}
 		switch msg.Decision {
 		case proto.Decision_APPROVE:
-			g.Debugf("Approving role request %q", msg.ID)
-			err = auth.SetRoleRequestState(msg.ID, services.RequestState_APPROVED)
+			g.Debugf("Approving access request %q", msg.ID)
+			err = auth.SetAccessRequestState(msg.ID, services.RequestState_APPROVED)
 		case proto.Decision_DENY:
-			g.Debugf("Denying role request %q", msg.ID)
-			err = auth.SetRoleRequestState(msg.ID, services.RequestState_DENIED)
+			g.Debugf("Denying access request %q", msg.ID)
+			err = auth.SetAccessRequestState(msg.ID, services.RequestState_DENIED)
 		default:
 			err = trace.BadParameter("unknown decision variant %q", msg.Decision.String())
 		}

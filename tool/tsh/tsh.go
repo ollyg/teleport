@@ -68,8 +68,8 @@ type CLIConf struct {
 	RemoteCommand []string
 	// DesiredRoles indicates one or more roles which should be requested.
 	DesiredRoles string
-	// RoleRequests indicates one or more approved role requests.
-	RoleRequests []string
+	// AccessRequests indicates one or more approved access requests.
+	AccessRequests []string
 	// Username is the Teleport user's username (to login into proxies)
 	Username string
 	// Proxy keeps the hostname:port of the SSH proxy to use
@@ -289,7 +289,7 @@ func Run(args []string, underTest bool) {
 	requestCreate.Flag("cluster", clusterHelp).Envar(clusterEnvVar).StringVar(&cf.SiteName)
 
 	requestApply := request.Command("apply", "Apply an approved request to the current session")
-	requestApply.Arg("request", "Request ID of approved role request(s)").Required().StringsVar(&cf.RoleRequests)
+	requestApply.Arg("request", "Request ID of approved access request(s)").Required().StringsVar(&cf.AccessRequests)
 	requestApply.Flag("cluster", clusterHelp).Envar(clusterEnvVar).StringVar(&cf.SiteName)
 
 	requestList := request.Command("ls", "List all pending requests")
@@ -415,11 +415,11 @@ func onRequestCreate(cf *CLIConf) {
 	if cf.Username == "" {
 		cf.Username = tc.Username
 	}
-	req, err := services.NewRoleRequest(cf.Username, roles...)
+	req, err := services.NewAccessRequest(cf.Username, roles...)
 	if err != nil {
 		utils.FatalError(err)
 	}
-	if err := tc.CreateRoleRequest(context.TODO(), req); err != nil {
+	if err := tc.CreateAccessRequest(context.TODO(), req); err != nil {
 		utils.FatalError(err)
 	}
 	fmt.Println(req.GetName())
@@ -437,7 +437,7 @@ func onRequestExecute(cf *CLIConf) {
 	if cf.Username == "" {
 		cf.Username = tc.Username
 	}
-	req, err := services.NewRoleRequest(cf.Username, roles...)
+	req, err := services.NewAccessRequest(cf.Username, roles...)
 	if err != nil {
 		utils.FatalError(err)
 	}
@@ -453,14 +453,14 @@ func onRequestExecute(cf *CLIConf) {
 }
 
 func onRequestApply(cf *CLIConf) {
-	if len(cf.RoleRequests) < 1 {
+	if len(cf.AccessRequests) < 1 {
 		utils.FatalError(trace.BadParameter("one or more request ids must be specified"))
 	}
 	tc, err := makeClient(cf, true)
 	if err != nil {
 		utils.FatalError(err)
 	}
-	if err := reissueWithRequests(cf, tc, cf.RoleRequests...); err != nil {
+	if err := reissueWithRequests(cf, tc, cf.AccessRequests...); err != nil {
 		utils.FatalError(err)
 	}
 	onStatus(cf)
@@ -471,7 +471,7 @@ func onRequestList(cf *CLIConf) {
 	if err != nil {
 		utils.FatalError(err)
 	}
-	reqs, err := tc.GetRoleRequests(context.TODO(), services.RoleRequestFilter{
+	reqs, err := tc.GetAccessRequests(context.TODO(), services.AccessRequestFilter{
 		User: tc.Username,
 	})
 	if err != nil {
@@ -552,7 +552,7 @@ func onLogin(cf *CLIConf) {
 		case (cf.Proxy == "" || host(cf.Proxy) == host(profile.ProxyURL.Host)) && cf.SiteName != "":
 			// trigger reissue, preserving any active requests.
 			err = tc.ReissueUserCerts(cf.Context, client.ReissueParams{
-				RoleRequests:   profile.ActiveRequests.RoleRequests,
+				AccessRequests:   profile.ActiveRequests.AccessRequests,
 				RouteToCluster: cf.SiteName,
 			})
 			if err != nil {
@@ -1475,24 +1475,24 @@ func host(in string) string {
 	return out
 }
 
-// getRequestApproval registers a role request with the auth server and waits for it to be approved.
-func getRequestApproval(cf *CLIConf, tc *client.TeleportClient, req services.RoleRequest) error {
+// getRequestApproval registers an access request with the auth server and waits for it to be approved.
+func getRequestApproval(cf *CLIConf, tc *client.TeleportClient, req services.AccessRequest) error {
 	// set up request watcher before submitting the request to the admin server
 	// in order to avoid potential race.
-	watcher, err := tc.WatchRoleRequests(cf.Context, services.RoleRequestFilter{
+	watcher, err := tc.WatchAccessRequests(cf.Context, services.AccessRequestFilter{
 		User: cf.Username,
 	})
 	if err != nil {
 		return trace.Wrap(err)
 	}
 	defer watcher.Close()
-	if err := tc.CreateRoleRequest(cf.Context, req); err != nil {
+	if err := tc.CreateAccessRequest(cf.Context, req); err != nil {
 		utils.FatalError(err)
 	}
 Loop:
 	for {
 		select {
-		case r := <-watcher.RoleRequests():
+		case r := <-watcher.AccessRequests():
 			if r.GetName() != req.GetName() || r.GetState().IsPending() {
 				continue Loop
 			}
@@ -1514,12 +1514,12 @@ func reissueWithRequests(cf *CLIConf, tc *client.TeleportClient, reqIDs ...strin
 		return trace.Wrap(err)
 	}
 	params := client.ReissueParams{
-		RoleRequests:   reqIDs,
+		AccessRequests:   reqIDs,
 		RouteToCluster: cf.SiteName,
 	}
 	// if the certificate already had active requests, add them to our inputs parameters.
-	if len(profile.ActiveRequests.RoleRequests) > 0 {
-		params.RoleRequests = append(params.RoleRequests, profile.ActiveRequests.RoleRequests...)
+	if len(profile.ActiveRequests.AccessRequests) > 0 {
+		params.AccessRequests = append(params.AccessRequests, profile.ActiveRequests.AccessRequests...)
 	}
 	if params.RouteToCluster == "" {
 		params.RouteToCluster = profile.Cluster

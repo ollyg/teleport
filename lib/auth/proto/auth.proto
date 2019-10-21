@@ -100,9 +100,9 @@ message UserCertsRequest {
     // so that requests originating with this certificate will be redirected
     // to this cluster
     string RouteToCluster = 5 [(gogoproto.jsontag) = "route_to_cluster,omitempty"];
-    // RoleRequests is an optional list of request IDs indicating requests whose
+    // AccessRequests is an optional list of request IDs indicating requests whose
     // escalated privileges should be added to the certificate.
-    repeated string RoleRequests = 6 [(gogoproto.jsontag) = "role_requests,omitempty"];
+    repeated string AccessRequests = 6 [(gogoproto.jsontag) = "access_requests,omitempty"];
 }
 
 // GetUserRequest specifies paramters for the GetUser method.
@@ -119,9 +119,9 @@ message GetUsersRequest {
     bool WithSecrets = 1 [(gogoproto.jsontag) = "with_secrets"];
 }
 
-// RoleRequests is a collection of RoleRequest values.
-message RoleRequests {
-    repeated services.RoleRequestV1 RoleRequests = 1 [(gogoproto.jsontag) = "role_requests"];
+// AccessRequests is a collection of AccessRequest values.
+message AccessRequests {
+    repeated services.AccessRequestV1 AccessRequests = 1 [(gogoproto.jsontag) = "access_requests"];
 }
 
 // RequestStateSetter encodes the paramters necessary to update the
@@ -131,7 +131,7 @@ message RequestStateSetter {
     services.RequestState State = 2 [(gogoproto.jsontag) = "state"];
 }
 
-// RequestID is the unique identifier of a role request.
+// RequestID is the unique identifier of an access request.
 message RequestID {
     string ID = 1 [(gogoproto.jsontag) = "id"];
 }
@@ -150,15 +150,15 @@ service AuthService {
     rpc GetUser(GetUserRequest) returns (services.UserV2);
     // GetUsers gets all current user resources.
     rpc GetUsers(GetUsersRequest) returns (stream services.UserV2);
-    // GetRoleRequests gets all pending role requests.
-    rpc GetRoleRequests(services.RoleRequestFilter) returns (RoleRequests);
-    // WatchRoleRequests is a variant of WatchEvents which supports custom
-    // filtering options specific to role requests.
-    rpc WatchRoleRequests(services.RoleRequestFilter) returns (stream services.RoleRequestV1);
-    // CreateRoleRequest creates a new role request.
-    rpc CreateRoleRequest(services.RoleRequestV1) returns (google.protobuf.Empty);
-    // DeleteRoleRequest deletes a role request.
-    rpc DeleteRoleRequest(RequestID) returns (google.protobuf.Empty);
-    // SetRoleRequestState sets the state of a role request.
-    rpc SetRoleRequestState(RequestStateSetter) returns (google.protobuf.Empty);
+    // GetAccessRequests gets all pending access requests.
+    rpc GetAccessRequests(services.AccessRequestFilter) returns (AccessRequests);
+    // WatchAccessRequests is a variant of WatchEvents which supports custom
+    // filtering options specific to access requests.
+    rpc WatchAccessRequests(services.AccessRequestFilter) returns (stream services.AccessRequestV1);
+    // CreateAccessRequest creates a new access request.
+    rpc CreateAccessRequest(services.AccessRequestV1) returns (google.protobuf.Empty);
+    // DeleteAccessRequest deletes an access request.
+    rpc DeleteAccessRequest(RequestID) returns (google.protobuf.Empty);
+    // SetAccessRequestState sets the state of an access request.
+    rpc SetAccessRequestState(RequestStateSetter) returns (google.protobuf.Empty);
 }

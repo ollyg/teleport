@@ -452,7 +452,7 @@ func (a *AuthWithRoles) NewWatcher(ctx context.Context, watch services.Watch) (s
 					return nil, trace.Wrap(err)
 				}
 			}
-		case services.KindRoleRequest:
+		case services.KindAccessRequest:
 			if err := a.action(defaults.Namespace, services.KindUser, services.VerbRead); err != nil {
 				return nil, trace.Wrap(err)
 			}
@@ -781,8 +781,8 @@ func (a *AuthWithRoles) DeleteWebSession(user string, sid string) error {
 	return a.authServer.DeleteWebSession(user, sid)
 }
 
-func (a *AuthWithRoles) GetRoleRequests(filter services.RoleRequestFilter) ([]services.RoleRequest, error) {
-	// Currently, RoleRequests are scoped under "KindUser" permissions, because
+func (a *AuthWithRoles) GetAccessRequests(filter services.AccessRequestFilter) ([]services.AccessRequest, error) {
+	// Currently, AccessRequests are scoped under "KindUser" permissions, because
 	// KindUser permissions effectively grant the same powers (access to the names
 	// of users and roles, and the ability to apply roles to users).
 	if filter.User == "" || a.currentUserAction(filter.User) != nil {
@@ -793,10 +793,10 @@ func (a *AuthWithRoles) GetRoleRequests(filter services.RoleRequestFilter) ([]se
 			return nil, trace.Wrap(err)
 		}
 	}
-	return a.authServer.GetRoleRequests(filter)
+	return a.authServer.GetAccessRequests(filter)
 }
 
-func (a *AuthWithRoles) WatchRoleRequests(ctx context.Context, filter services.RoleRequestFilter) (RoleRequestWatcher, error) {
+func (a *AuthWithRoles) WatchAccessRequests(ctx context.Context, filter services.AccessRequestFilter) (AccessRequestWatcher, error) {
 	if filter.User == "" || a.currentUserAction(filter.User) != nil {
 		if err := a.action(defaults.Namespace, services.KindUser, services.VerbList); err != nil {
 			return nil, trace.Wrap(err)
@@ -805,14 +805,14 @@ func (a *AuthWithRoles) WatchRoleRequests(ctx context.Context, filter services.R
 			return nil, trace.Wrap(err)
 		}
 	}
-	watcher, err := newRoleRequestWatcherFromEvents(ctx, a.authServer, filter)
+	watcher, err := newAccessRequestWatcherFromEvents(ctx, a.authServer, filter)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
 	return watcher, nil
 }
 
-func (a *AuthWithRoles) CreateRoleRequest(req services.RoleRequest) error {
+func (a *AuthWithRoles) CreateAccessRequest(req services.AccessRequest) error {
 	if !req.GetState().IsPending() || a.currentUserAction(req.GetUser()) != nil {
 		// Users are allowed to create pending requests for themselves, all other
 		// creation attempts are subject to normal permissioning.
@@ -820,21 +820,21 @@ func (a *AuthWithRoles) CreateRoleRequest(req services.RoleRequest) error {
 			return trace.Wrap(err)
 		}
 	}
-	return a.authServer.CreateRoleRequest(req)
+	return a.authServer.CreateAccessRequest(req)
 }
 
-func (a *AuthWithRoles) SetRoleRequestState(reqID string, state services.RequestState) error {
+func (a *AuthWithRoles) SetAccessRequestState(reqID string, state services.RequestState) error {
 	if err := a.action(defaults.Namespace, services.KindUser, services.VerbUpdate); err != nil {
 		return trace.Wrap(err)
 	}
-	return a.authServer.SetRoleRequestState(reqID, state)
+	return a.authServer.SetAccessRequestState(reqID, state)
 }
 
-func (a *AuthWithRoles) DeleteRoleRequest(name string) error {
+func (a *AuthWithRoles) DeleteAccessRequest(name string) error {
 	if err := a.action(defaults.Namespace, services.KindUser, services.VerbUpdate); err != nil {
 		return trace.Wrap(err)
 	}
-	return a.authServer.DeleteRoleRequest(name)
+	return a.authServer.DeleteAccessRequest(name)
 }
 
 func (a *AuthWithRoles) GetUsers(withSecrets bool) ([]services.User, error) {
@@ -967,36 +967,36 @@ func (a *AuthWithRoles) GenerateUserCerts(ctx context.Context, req proto.UserCer
 		return nil, trace.AccessDenied("this request can be only executed by an admin")
 	}
 
-	if len(req.RoleRequests) > 0 {
-		// add any applicable role request values.
-		for _, reqID := range req.RoleRequests {
-			roleReq, err := a.authServer.GetRoleRequest(reqID)
+	if len(req.AccessRequests) > 0 {
+		// add any applicable access request values.
+		for _, reqID := range req.AccessRequests {
+			roleReq, err := a.authServer.GetAccessRequest(reqID)
 			if err != nil {
 				if trace.IsNotFound(err) {
-					return nil, trace.AccessDenied("invalid role request %q", reqID)
+					return nil, trace.AccessDenied("invalid access request %q", reqID)
 				}
 				return nil, trace.Wrap(err)
 			}
 			if roleReq.GetUser() != req.Username {
-				return nil, trace.AccessDenied("invalid role request %q", reqID)
+				return nil, trace.AccessDenied("invalid access request %q", reqID)
 			}
 			if !roleReq.GetState().IsApproved() {
-				return nil, trace.AccessDenied("role-request %q is awaiting approval", reqID)
+				return nil, trace.AccessDenied("access-request %q is awaiting approval", reqID)
 			}
-			if err := a.authServer.validateRoleRequest(roleReq); err != nil {
+			if err := a.authServer.validateAccessRequest(roleReq); err != nil {
 				return nil, trace.Wrap(err)
 			}
 			rexp := roleReq.Expiry()
 			if rexp.Before(a.authServer.GetClock().Now()) {
-				return nil, trace.AccessDenied("role-request %q is expired", reqID)
+				return nil, trace.AccessDenied("access-request %q is expired", reqID)
 			}
 			if rexp.Before(req.Expires) {
-				// cannot generate a cert that would outlive the role request
+				// cannot generate a cert that would outlive the access request
 				req.Expires = rexp
 			}
 			roles = append(roles, roleReq.GetRoles()...)
 		}
-		// nothing prevents a role-request from including roles already posessed by the
+		// nothing prevents an access-request from including roles already posessed by the
 		// user, so we must make sure to trim duplicate roles.
 		roles = utils.Deduplicate(roles)
 	}
@@ -1023,7 +1023,7 @@ func (a *AuthWithRoles) GenerateUserCerts(ctx context.Context, req proto.UserCer
 		checker:         checker,
 		traits:          traits,
 		activeRequests: services.RequestIDs{
-			RoleRequests: req.RoleRequests,
+			AccessRequests: req.AccessRequests,
 		},
 	})
 	if err != nil {

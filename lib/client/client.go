@@ -170,7 +170,7 @@ func (proxy *ProxyClient) GenerateCertsForCluster(ctx context.Context, routeToCl
 // user certificate reissue.
 type ReissueParams struct {
 	RouteToCluster string
-	RoleRequests   []string
+	AccessRequests   []string
 }
 
 // ReissueUserCerts generates certificates for the user
@@ -213,7 +213,7 @@ func (proxy *ProxyClient) ReissueUserCerts(ctx context.Context, params ReissuePa
 		PublicKey:      key.Pub,
 		Expires:        time.Unix(int64(cert.ValidBefore), 0),
 		RouteToCluster: params.RouteToCluster,
-		RoleRequests:   params.RoleRequests,
+		AccessRequests:   params.AccessRequests,
 	}
 	if _, ok := cert.Permissions.Extensions[teleport.CertExtensionTeleportRoles]; !ok {
 		req.Format = teleport.CertificateFormatOldSSH
@@ -231,33 +231,33 @@ func (proxy *ProxyClient) ReissueUserCerts(ctx context.Context, params ReissuePa
 	return trace.Wrap(err)
 }
 
-// CreateRoleRequest attempts to create a new request for escalated privilege.
-func (proxy *ProxyClient) CreateRoleRequest(ctx context.Context, req services.RoleRequest) error {
+// CreateAccessRequest attempts to create a new request for escalated privilege.
+func (proxy *ProxyClient) CreateAccessRequest(ctx context.Context, req services.AccessRequest) error {
 	site, err := proxy.ConnectToCurrentCluster(ctx, false)
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	return site.CreateRoleRequest(req)
+	return site.CreateAccessRequest(req)
 }
 
-func (proxy *ProxyClient) GetRoleRequests(ctx context.Context, filter services.RoleRequestFilter) ([]services.RoleRequest, error) {
+func (proxy *ProxyClient) GetAccessRequests(ctx context.Context, filter services.AccessRequestFilter) ([]services.AccessRequest, error) {
 	site, err := proxy.ConnectToCurrentCluster(ctx, false)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	reqs, err := site.GetRoleRequests(filter)
+	reqs, err := site.GetAccessRequests(filter)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
 	return reqs, nil
 }
 
-func (proxy *ProxyClient) WatchRoleRequests(ctx context.Context, filter services.RoleRequestFilter) (auth.RoleRequestWatcher, error) {
+func (proxy *ProxyClient) WatchAccessRequests(ctx context.Context, filter services.AccessRequestFilter) (auth.AccessRequestWatcher, error) {
 	site, err := proxy.ConnectToCurrentCluster(ctx, false)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	watcher, err := site.WatchRoleRequests(ctx, filter)
+	watcher, err := site.WatchAccessRequests(ctx, filter)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}

@@ -1359,21 +1359,21 @@ func (a *AuthServer) DeleteRole(name string) error {
 	return a.Access.DeleteRole(name)
 }
 
-func (a *AuthServer) CreateRoleRequest(req services.RoleRequest) error {
-	if err := a.validateRoleRequest(req); err != nil {
+func (a *AuthServer) CreateAccessRequest(req services.AccessRequest) error {
+	if err := a.validateAccessRequest(req); err != nil {
 		return trace.Wrap(err)
 	}
-	ttl, err := a.calculateRoleRequestTTL(req)
+	ttl, err := a.calculateAccessRequestTTL(req)
 	if err != nil {
 		return trace.Wrap(err)
 	}
 	req.SetTTL(a.clock, ttl)
-	return a.DynamicAccess.CreateRoleRequest(req)
+	return a.DynamicAccess.CreateAccessRequest(req)
 }
 
-// validateRoleRequest checks if a given role request is allowable based
+// validateAccessRequest checks if a given access request is allowable based
 // on the current configuration of the target user.
-func (a *AuthServer) validateRoleRequest(req services.RoleRequest) error {
+func (a *AuthServer) validateAccessRequest(req services.AccessRequest) error {
 	user, err := a.GetUser(req.GetUser(), false)
 	if err != nil {
 		return trace.Wrap(err)
@@ -1399,12 +1399,12 @@ func (a *AuthServer) validateRoleRequest(req services.RoleRequest) error {
 	return nil
 }
 
-// calculateRoleRequestTTL determines the maximum allowable TTL for a given role request
-// based on the MaxSessionTTLs of the roles being requested (a role request's life cannot
+// calculateAccessRequestTTL determines the maximum allowable TTL for a given access request
+// based on the MaxSessionTTLs of the roles being requested (a access request's life cannot
 // exceed the smallest allowable MaxSessionTTL value of the roles that it requests).
-func (a *AuthServer) calculateRoleRequestTTL(req services.RoleRequest) (time.Duration, error) {
-	const MaxRoleRequestTTL = 20 * time.Hour
-	minTTL := MaxRoleRequestTTL
+func (a *AuthServer) calculateAccessRequestTTL(req services.AccessRequest) (time.Duration, error) {
+	const MaxAccessRequestTTL = 20 * time.Hour
+	minTTL := MaxAccessRequestTTL
 	for _, roleName := range req.GetRoles() {
 		role, err := a.GetRole(roleName)
 		if err != nil {
@@ -1513,7 +1513,7 @@ func (a *AuthServer) GetAllTunnelConnections(opts ...services.MarshalOption) (co
 }
 
 /*
-// awaitRoleApproval waits for an approval event for the specified role request.
+// awaitRoleApproval waits for an approval event for the specified access request.
 //
 // NOTE: this method may block indefinitely if no timeout is applied to ctx.
 func (a *AuthServer) awaitRoleApproval(ctx context.Context, requestID string) (approved bool, err error) {
@@ -1521,7 +1521,7 @@ func (a *AuthServer) awaitRoleApproval(ctx context.Context, requestID string) (a
 		Name: "role-approval-",
 		Kinds: []services.WatchKind{
 			services.WatchKind{
-				Kind: services.KindRoleRequest,
+				Kind: services.KindAccessRequest,
 				Name: requestID,
 			},
 		},
@@ -1533,7 +1533,7 @@ func (a *AuthServer) awaitRoleApproval(ctx context.Context, requestID string) (a
 	for {
 		select {
 		case event := <-watcher.Events():
-			if event.Resource.GetKind() != services.KindRoleRequest {
+			if event.Resource.GetKind() != services.KindAccessRequest {
 				return false, trace.BadParameter("unexpected resource kind %q", event.Resource.GetKind())
 			}
 			if event.Resource.GetName() != requestID {
@@ -1543,7 +1543,7 @@ func (a *AuthServer) awaitRoleApproval(ctx context.Context, requestID string) (a
 			case backend.OpInit:
 				continue
 			case backend.OpPut:
-				req, ok := event.Resource.(services.RoleRequest)
+				req, ok := event.Resource.(services.AccessRequest)
 				if !ok {
 					return false, trace.BadParameter("unexpected resource type %T", event.Resource)
 				}

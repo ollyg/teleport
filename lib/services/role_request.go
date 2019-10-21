@@ -30,7 +30,7 @@ import (
 
 // RequestIDs is a collection of IDs for privelege escalation requests.
 type RequestIDs struct {
-	RoleRequests []string `json:"role_requests,omitempty"`
+	AccessRequests []string `json:"access_requests,omitempty"`
 }
 
 func (r *RequestIDs) Marshal() ([]byte, error) {
@@ -49,7 +49,7 @@ func (r *RequestIDs) Unmarshal(data []byte) error {
 }
 
 func (r *RequestIDs) Check() error {
-	for _, id := range r.RoleRequests {
+	for _, id := range r.AccessRequests {
 		if uuid.Parse(id) == nil {
 			return trace.BadParameter("invalid request id %q", id)
 		}
@@ -58,11 +58,11 @@ func (r *RequestIDs) Check() error {
 }
 
 func (r *RequestIDs) IsEmpty() bool {
-	return len(r.RoleRequests) < 1
+	return len(r.AccessRequests) < 1
 }
 
-// Match checks if a given role request matchers this filter.
-func (f *RoleRequestFilter) Match(req RoleRequest) bool {
+// Match checks if a given access request matchers this filter.
+func (f *AccessRequestFilter) Match(req AccessRequest) bool {
 	if f.ID != "" && req.GetName() != f.ID {
 		return false
 	}
@@ -74,20 +74,20 @@ func (f *RoleRequestFilter) Match(req RoleRequest) bool {
 
 // DynamicAccess is a service which manages dynamic RBAC.
 type DynamicAccess interface {
-	// CreateRoleRequest stores a new role request.
-	CreateRoleRequest(RoleRequest) error
-	// SetRoleRequestState updates the state of an existing role request.
-	SetRoleRequestState(reqID string, state RequestState) error
-	// GetRoleRequest gets a role request by name (uuid).
-	GetRoleRequest(string) (RoleRequest, error)
-	// GetRoleRequests gets all currently active role requests.
-	GetRoleRequests(RoleRequestFilter) ([]RoleRequest, error)
-	// DeleteRoleRequest deletes a role request.
-	DeleteRoleRequest(string) error
+	// CreateAccessRequest stores a new access request.
+	CreateAccessRequest(AccessRequest) error
+	// SetAccessRequestState updates the state of an existing access request.
+	SetAccessRequestState(reqID string, state RequestState) error
+	// GetAccessRequest gets an access request by name (uuid).
+	GetAccessRequest(string) (AccessRequest, error)
+	// GetAccessRequests gets all currently active access requests.
+	GetAccessRequests(AccessRequestFilter) ([]AccessRequest, error)
+	// DeleteAccessRequest deletes an access request.
+	DeleteAccessRequest(string) error
 }
 
-// RoleRequest is a request for temporarily granted roles
-type RoleRequest interface {
+// AccessRequest is a request for temporarily granted roles
+type AccessRequest interface {
 	Resource
 	// GetUser gets the name of the requesting user
 	GetUser() string
@@ -113,16 +113,16 @@ func (s RequestState) IsDenied() bool {
 	return s == RequestState_DENIED
 }
 
-// NewRoleRequest assembled a RoleRequest resource.
-func NewRoleRequest(user string, roles ...string) (RoleRequest, error) {
-	req := RoleRequestV1{
-		Kind:    KindRoleRequest,
+// NewAccessRequest assembled an AccessReqeust resource.
+func NewAccessRequest(user string, roles ...string) (AccessRequest, error) {
+	req := AccessRequestV1{
+		Kind:    KindAccessRequest,
 		Version: V3,
 		Metadata: Metadata{
 			Name: uuid.New(),
 			// TODO: add expiry
 		},
-		Spec: RoleRequestSpecV1{
+		Spec: AccessRequestSpecV1{
 			User:  user,
 			Roles: roles,
 			State: RequestState_PENDING,
@@ -134,19 +134,19 @@ func NewRoleRequest(user string, roles ...string) (RoleRequest, error) {
 	return &req, nil
 }
 
-func (r *RoleRequestV1) GetUser() string {
+func (r *AccessRequestV1) GetUser() string {
 	return r.Spec.User
 }
 
-func (r *RoleRequestV1) GetRoles() []string {
+func (r *AccessRequestV1) GetRoles() []string {
 	return r.Spec.Roles
 }
 
-func (r *RoleRequestV1) GetState() RequestState {
+func (r *AccessRequestV1) GetState() RequestState {
 	return r.Spec.State
 }
 
-func (r *RoleRequestV1) SetState(state RequestState) error {
+func (r *AccessRequestV1) SetState(state RequestState) error {
 	if r.Spec.State.IsDenied() {
 		if state.IsDenied() {
 			return nil
@@ -157,7 +157,7 @@ func (r *RoleRequestV1) SetState(state RequestState) error {
 	return nil
 }
 
-func (r *RoleRequestV1) CheckAndSetDefaults() error {
+func (r *AccessRequestV1) CheckAndSetDefaults() error {
 	if err := r.Metadata.CheckAndSetDefaults(); err != nil {
 		return trace.Wrap(err)
 	}
@@ -167,44 +167,44 @@ func (r *RoleRequestV1) CheckAndSetDefaults() error {
 	return nil
 }
 
-func (r *RoleRequestV1) Check() error {
+func (r *AccessRequestV1) Check() error {
 	if r.Kind == "" {
-		return trace.BadParameter("role request kind not set")
+		return trace.BadParameter("access request kind not set")
 	}
 	if r.Version == "" {
-		return trace.BadParameter("role request version not set")
+		return trace.BadParameter("access request version not set")
 	}
 	if r.GetName() == "" {
-		return trace.BadParameter("role request id not set")
+		return trace.BadParameter("access request id not set")
 	}
 	if uuid.Parse(r.GetName()) == nil {
-		return trace.BadParameter("invalid role request id %q", r.GetName())
+		return trace.BadParameter("invalid access request id %q", r.GetName())
 	}
 	if r.GetUser() == "" {
-		return trace.BadParameter("role request user name not set")
+		return trace.BadParameter("access request user name not set")
 	}
 	if len(r.GetRoles()) < 1 {
-		return trace.BadParameter("role request does not specify any roles")
+		return trace.BadParameter("access request does not specify any roles")
 	}
 	return nil
 }
 
 // --------------------------------------------------------------------
 
-type RoleRequestMarshaler interface {
-	MarshalRoleRequest(req RoleRequest, opts ...MarshalOption) ([]byte, error)
-	UnmarshalRoleRequest(bytes []byte, opts ...MarshalOption) (RoleRequest, error)
+type AccessRequestMarshaler interface {
+	MarshalAccessRequest(req AccessRequest, opts ...MarshalOption) ([]byte, error)
+	UnmarshalAccessRequest(bytes []byte, opts ...MarshalOption) (AccessRequest, error)
 }
 
 type roleRequestMarshaler struct{}
 
-func (r *roleRequestMarshaler) MarshalRoleRequest(req RoleRequest, opts ...MarshalOption) ([]byte, error) {
+func (r *roleRequestMarshaler) MarshalAccessRequest(req AccessRequest, opts ...MarshalOption) ([]byte, error) {
 	cfg, err := collectOptions(opts)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
 	switch r := req.(type) {
-	case *RoleRequestV1:
+	case *AccessRequestV1:
 		if !cfg.PreserveResourceID {
 			// avoid modifying the original object
 			// to prevent unexpected data races
@@ -214,22 +214,22 @@ func (r *roleRequestMarshaler) MarshalRoleRequest(req RoleRequest, opts ...Marsh
 		}
 		return utils.FastMarshal(r)
 	default:
-		return nil, trace.BadParameter("unrecognized role request type: %T", req)
+		return nil, trace.BadParameter("unrecognized access request type: %T", req)
 	}
 }
 
-func (r *roleRequestMarshaler) UnmarshalRoleRequest(data []byte, opts ...MarshalOption) (RoleRequest, error) {
+func (r *roleRequestMarshaler) UnmarshalAccessRequest(data []byte, opts ...MarshalOption) (AccessRequest, error) {
 	cfg, err := collectOptions(opts)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	var req RoleRequestV1
+	var req AccessRequestV1
 	if cfg.SkipValidation {
 		if err := utils.FastUnmarshal(data, &req); err != nil {
 			return nil, trace.Wrap(err)
 		}
 	} else {
-		if err := utils.UnmarshalWithSchema(GetRoleRequestSchema(), &req, data); err != nil {
+		if err := utils.UnmarshalWithSchema(GetAccessRequestSchema(), &req, data); err != nil {
 			return nil, trace.Wrap(err)
 		}
 	}
@@ -245,15 +245,15 @@ func (r *roleRequestMarshaler) UnmarshalRoleRequest(data []byte, opts ...Marshal
 	return &req, nil
 }
 
-var roleRequestMarshalerInstance RoleRequestMarshaler = &roleRequestMarshaler{}
+var roleRequestMarshalerInstance AccessRequestMarshaler = &roleRequestMarshaler{}
 
-func GetRoleRequestMarshaler() RoleRequestMarshaler {
+func GetAccessRequestMarshaler() AccessRequestMarshaler {
 	marshalerMutex.Lock()
 	defer marshalerMutex.Unlock()
 	return roleRequestMarshalerInstance
 }
 
-const RoleRequestSpecSchema = `{
+const AccessRequestSpecSchema = `{
 	"type": "object",
 	"additionalProperties": false,
 	"properties": {
@@ -266,60 +266,60 @@ const RoleRequestSpecSchema = `{
 	}
 }`
 
-func GetRoleRequestSchema() string {
-	return fmt.Sprintf(V2SchemaTemplate, MetadataSchema, RoleRequestSpecSchema, DefaultDefinitions)
+func GetAccessRequestSchema() string {
+	return fmt.Sprintf(V2SchemaTemplate, MetadataSchema, AccessRequestSpecSchema, DefaultDefinitions)
 }
 
 // --------------------------------------------------------------------
 
-func (r *RoleRequestV1) GetKind() string {
+func (r *AccessRequestV1) GetKind() string {
 	return r.Kind
 }
 
-func (r *RoleRequestV1) GetSubKind() string {
+func (r *AccessRequestV1) GetSubKind() string {
 	return r.SubKind
 }
 
-func (r *RoleRequestV1) SetSubKind(subKind string) {
+func (r *AccessRequestV1) SetSubKind(subKind string) {
 	r.SubKind = subKind
 }
 
-func (r *RoleRequestV1) GetVersion() string {
+func (r *AccessRequestV1) GetVersion() string {
 	return r.Version
 }
 
-func (r *RoleRequestV1) GetName() string {
+func (r *AccessRequestV1) GetName() string {
 	return r.Metadata.Name
 }
 
-func (r *RoleRequestV1) SetName(name string) {
+func (r *AccessRequestV1) SetName(name string) {
 	r.Metadata.Name = name
 }
 
-func (r *RoleRequestV1) Expiry() time.Time {
+func (r *AccessRequestV1) Expiry() time.Time {
 	return r.Metadata.Expiry()
 }
 
-func (r *RoleRequestV1) SetExpiry(expiry time.Time) {
+func (r *AccessRequestV1) SetExpiry(expiry time.Time) {
 	r.Metadata.SetExpiry(expiry)
 }
 
-func (r *RoleRequestV1) SetTTL(clock clockwork.Clock, ttl time.Duration) {
+func (r *AccessRequestV1) SetTTL(clock clockwork.Clock, ttl time.Duration) {
 	r.Metadata.SetTTL(clock, ttl)
 }
 
-func (r *RoleRequestV1) GetMetadata() Metadata {
+func (r *AccessRequestV1) GetMetadata() Metadata {
 	return r.Metadata
 }
 
-func (r *RoleRequestV1) GetResourceID() int64 {
+func (r *AccessRequestV1) GetResourceID() int64 {
 	return r.Metadata.GetID()
 }
 
-func (r *RoleRequestV1) SetResourceID(id int64) {
+func (r *AccessRequestV1) SetResourceID(id int64) {
 	r.Metadata.SetID(id)
 }
 
-func (r *RoleRequestV1) String() string {
-	return fmt.Sprintf("RoleRequest(user=%v,roles=%+v)", r.Spec.User, r.Spec.Roles)
+func (r *AccessRequestV1) String() string {
+	return fmt.Sprintf("AccessRequest(user=%v,roles=%+v)", r.Spec.User, r.Spec.Roles)
 }

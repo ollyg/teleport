@@ -36,11 +36,11 @@ func NewDynamicAccessService(backend backend.Backend) *AccessService {
 	return &AccessService{Backend: backend}
 }
 
-func (s *AccessService) CreateRoleRequest(req services.RoleRequest) error {
+func (s *AccessService) CreateAccessRequest(req services.AccessRequest) error {
 	if err := req.CheckAndSetDefaults(); err != nil {
 		return trace.Wrap(err)
 	}
-	item, err := itemFromRoleRequest(req)
+	item, err := itemFromAccessRequest(req)
 	if err != nil {
 		return trace.Wrap(err)
 	}
@@ -50,22 +50,22 @@ func (s *AccessService) CreateRoleRequest(req services.RoleRequest) error {
 	return nil
 }
 
-func (s *AccessService) SetRoleRequestState(name string, state services.RequestState) error {
+func (s *AccessService) SetAccessRequestState(name string, state services.RequestState) error {
 	item, err := s.Get(context.TODO(), roleRequestKey(name))
 	if err != nil {
 		if trace.IsNotFound(err) {
-			return trace.NotFound("cannot set state of role request %q (not found)", name)
+			return trace.NotFound("cannot set state of access request %q (not found)", name)
 		}
 		return trace.Wrap(err)
 	}
-	req, err := itemToRoleRequest(*item)
+	req, err := itemToAccessRequest(*item)
 	if err != nil {
 		return trace.Wrap(err)
 	}
 	if err := req.SetState(state); err != nil {
 		return trace.Wrap(err)
 	}
-	newItem, err := itemFromRoleRequest(req)
+	newItem, err := itemFromAccessRequest(req)
 	if err != nil {
 		return trace.Wrap(err)
 	}
@@ -75,32 +75,32 @@ func (s *AccessService) SetRoleRequestState(name string, state services.RequestS
 	return nil
 }
 
-func (s *AccessService) GetRoleRequest(name string) (services.RoleRequest, error) {
+func (s *AccessService) GetAccessRequest(name string) (services.AccessRequest, error) {
 	item, err := s.Get(context.TODO(), roleRequestKey(name))
 	if err != nil {
 		if trace.IsNotFound(err) {
-			return nil, trace.NotFound("role request %q not found", name)
+			return nil, trace.NotFound("access request %q not found", name)
 		}
 		return nil, trace.Wrap(err)
 	}
-	req, err := itemToRoleRequest(*item)
+	req, err := itemToAccessRequest(*item)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
 	return req, nil
 }
 
-func (s *AccessService) GetRoleRequests(filter services.RoleRequestFilter) ([]services.RoleRequest, error) {
+func (s *AccessService) GetAccessRequests(filter services.AccessRequestFilter) ([]services.AccessRequest, error) {
 	result, err := s.GetRange(context.TODO(), backend.Key(roleRequestsPrefix), backend.RangeEnd(backend.Key(roleRequestsPrefix)), backend.NoLimit)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	var requests []services.RoleRequest
+	var requests []services.AccessRequest
 	for _, item := range result.Items {
 		if !bytes.HasSuffix(item.Key, []byte(paramsPrefix)) {
 			continue
 		}
-		req, err := itemToRoleRequest(item)
+		req, err := itemToAccessRequest(item)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
@@ -114,19 +114,19 @@ func (s *AccessService) GetRoleRequests(filter services.RoleRequestFilter) ([]se
 	return requests, nil
 }
 
-func (s *AccessService) DeleteRoleRequest(name string) error {
+func (s *AccessService) DeleteAccessRequest(name string) error {
 	err := s.Delete(context.TODO(), roleRequestKey(name))
 	if err != nil {
 		if trace.IsNotFound(err) {
-			return trace.NotFound("cannot delete role request %q (not found)", name)
+			return trace.NotFound("cannot delete access request %q (not found)", name)
 		}
 		return trace.Wrap(err)
 	}
 	return nil
 }
 
-func itemFromRoleRequest(req services.RoleRequest) (backend.Item, error) {
-	value, err := services.GetRoleRequestMarshaler().MarshalRoleRequest(req)
+func itemFromAccessRequest(req services.AccessRequest) (backend.Item, error) {
+	value, err := services.GetAccessRequestMarshaler().MarshalAccessRequest(req)
 	if err != nil {
 		return backend.Item{}, trace.Wrap(err)
 	}
@@ -138,8 +138,8 @@ func itemFromRoleRequest(req services.RoleRequest) (backend.Item, error) {
 	}, nil
 }
 
-func itemToRoleRequest(item backend.Item) (services.RoleRequest, error) {
-	req, err := services.GetRoleRequestMarshaler().UnmarshalRoleRequest(
+func itemToAccessRequest(item backend.Item) (services.AccessRequest, error) {
+	req, err := services.GetAccessRequestMarshaler().UnmarshalAccessRequest(
 		item.Value,
 		services.WithResourceID(item.ID),
 		services.WithExpires(item.Expires),
@@ -155,5 +155,5 @@ func roleRequestKey(name string) []byte {
 }
 
 const (
-	roleRequestsPrefix = "role_requests"
+	roleRequestsPrefix = "access_requests"
 )

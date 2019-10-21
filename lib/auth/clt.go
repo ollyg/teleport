@@ -2530,29 +2530,29 @@ func (c *Client) DeleteTrustedCluster(name string) error {
 	return trace.Wrap(err)
 }
 
-func (c *Client) GetRoleRequests(filter services.RoleRequestFilter) ([]services.RoleRequest, error) {
+func (c *Client) GetAccessRequests(filter services.AccessRequestFilter) ([]services.AccessRequest, error) {
 	clt, err := c.grpc()
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	rsp, err := clt.GetRoleRequests(context.TODO(), &filter)
+	rsp, err := clt.GetAccessRequests(context.TODO(), &filter)
 	if err != nil {
 		return nil, trail.FromGRPC(err)
 	}
-	reqs := make([]services.RoleRequest, 0, len(rsp.RoleRequests))
-	for _, req := range rsp.RoleRequests {
+	reqs := make([]services.AccessRequest, 0, len(rsp.AccessRequests))
+	for _, req := range rsp.AccessRequests {
 		reqs = append(reqs, req)
 	}
 	return reqs, nil
 }
 
-func (c *Client) WatchRoleRequests(ctx context.Context, filter services.RoleRequestFilter) (RoleRequestWatcher, error) {
+func (c *Client) WatchAccessRequests(ctx context.Context, filter services.AccessRequestFilter) (AccessRequestWatcher, error) {
 	clt, err := c.grpc()
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
 	cancelCtx, cancel := context.WithCancel(ctx)
-	stream, err := clt.WatchRoleRequests(cancelCtx, &filter)
+	stream, err := clt.WatchAccessRequests(cancelCtx, &filter)
 	if err != nil {
 		cancel()
 		return nil, trail.FromGRPC(err)
@@ -2561,34 +2561,34 @@ func (c *Client) WatchRoleRequests(ctx context.Context, filter services.RoleRequ
 		stream: stream,
 		ctx:    cancelCtx,
 		cancel: cancel,
-		reqC:   make(chan services.RoleRequest),
+		reqC:   make(chan services.AccessRequest),
 	}
 	go w.receiveEvents()
 	return w, nil
 }
 
-func (c *Client) CreateRoleRequest(req services.RoleRequest) error {
-	r, ok := req.(*services.RoleRequestV1)
+func (c *Client) CreateAccessRequest(req services.AccessRequest) error {
+	r, ok := req.(*services.AccessRequestV1)
 	if !ok {
-		return trace.BadParameter("unexpected role request type %T", req)
+		return trace.BadParameter("unexpected access request type %T", req)
 	}
 	clt, err := c.grpc()
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	_, err = clt.CreateRoleRequest(context.TODO(), r)
+	_, err = clt.CreateAccessRequest(context.TODO(), r)
 	if err != nil {
 		return trail.FromGRPC(err)
 	}
 	return nil
 }
 
-func (c *Client) DeleteRoleRequest(reqID string) error {
+func (c *Client) DeleteAccessRequest(reqID string) error {
 	clt, err := c.grpc()
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	_, err = clt.DeleteRoleRequest(context.TODO(), &proto.RequestID{
+	_, err = clt.DeleteAccessRequest(context.TODO(), &proto.RequestID{
 		ID: reqID,
 	})
 	if err != nil {
@@ -2597,12 +2597,12 @@ func (c *Client) DeleteRoleRequest(reqID string) error {
 	return nil
 }
 
-func (c *Client) SetRoleRequestState(reqID string, state services.RequestState) error {
+func (c *Client) SetAccessRequestState(reqID string, state services.RequestState) error {
 	clt, err := c.grpc()
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	_, err = clt.SetRoleRequestState(context.TODO(), &proto.RequestStateSetter{
+	_, err = clt.SetAccessRequestState(context.TODO(), &proto.RequestStateSetter{
 		ID:    reqID,
 		State: state,
 	})
@@ -2612,9 +2612,9 @@ func (c *Client) SetRoleRequestState(reqID string, state services.RequestState) 
 	return nil
 }
 
-// RoleRequestWatcher monitors creation/updates of role requests.
-type RoleRequestWatcher interface {
-	RoleRequests() <-chan services.RoleRequest
+// AccessRequestWatcher monitors creation/updates of access requests.
+type AccessRequestWatcher interface {
+	AccessRequests() <-chan services.AccessRequest
 	Done() <-chan struct{}
 	Close() error
 	Error() error
@@ -2622,10 +2622,10 @@ type RoleRequestWatcher interface {
 
 type roleRequestStreamWatcher struct {
 	sync.RWMutex
-	stream proto.AuthService_WatchRoleRequestsClient
+	stream proto.AuthService_WatchAccessRequestsClient
 	ctx    context.Context
 	cancel context.CancelFunc
-	reqC   chan services.RoleRequest
+	reqC   chan services.AccessRequest
 	err    error
 }
 
@@ -2642,7 +2642,7 @@ func (w *roleRequestStreamWatcher) closeWithError(err error) {
 	w.err = err
 }
 
-func (w *roleRequestStreamWatcher) RoleRequests() <-chan services.RoleRequest {
+func (w *roleRequestStreamWatcher) AccessRequests() <-chan services.AccessRequest {
 	return w.reqC
 }
 
@@ -2670,13 +2670,13 @@ func (w *roleRequestStreamWatcher) Close() error {
 	return nil
 }
 
-// newRoleRequestWatcherFromEvents builds RoleRequestWatcher from an Events service.
-func newRoleRequestWatcherFromEvents(ctx context.Context, events services.Events, filter services.RoleRequestFilter) (RoleRequestWatcher, error) {
+// newAccessRequestWatcherFromEvents builds AccessRequestWatcher from an Events service.
+func newAccessRequestWatcherFromEvents(ctx context.Context, events services.Events, filter services.AccessRequestFilter) (AccessRequestWatcher, error) {
 	baseWatcher, err := events.NewWatcher(ctx, services.Watch{
-		Name: "role-request-watcher",
+		Name: "access-request-watcher",
 		Kinds: []services.WatchKind{
 			services.WatchKind{
-				Kind: services.KindRoleRequest,
+				Kind: services.KindAccessRequest,
 				Name: filter.ID,
 			},
 		},
@@ -2684,7 +2684,7 @@ func newRoleRequestWatcherFromEvents(ctx context.Context, events services.Events
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	reqC := make(chan services.RoleRequest)
+	reqC := make(chan services.AccessRequest)
 	watcher := &roleRequestEventWatcher{
 		Watcher: baseWatcher,
 		filter:  filter,
@@ -2696,11 +2696,11 @@ func newRoleRequestWatcherFromEvents(ctx context.Context, events services.Events
 
 type roleRequestEventWatcher struct {
 	services.Watcher
-	filter services.RoleRequestFilter
-	reqC   chan services.RoleRequest
+	filter services.AccessRequestFilter
+	reqC   chan services.AccessRequest
 }
 
-func (r *roleRequestEventWatcher) RoleRequests() <-chan services.RoleRequest {
+func (r *roleRequestEventWatcher) AccessRequests() <-chan services.AccessRequest {
 	return r.reqC
 }
 
@@ -2711,7 +2711,7 @@ Loop:
 		case event := <-r.Watcher.Events():
 			switch event.Type {
 			case backend.OpInit, backend.OpPut:
-				req, ok := event.Resource.(*services.RoleRequestV1)
+				req, ok := event.Resource.(*services.AccessRequestV1)
 				if !ok {
 					// TODO: log unexpected type
 					continue Loop
@@ -2949,14 +2949,14 @@ type ClientI interface {
 	// ProcessKubeCSR processes CSR request against Kubernetes CA, returns
 	// signed certificate if sucessful.
 	ProcessKubeCSR(req KubeCSR) (*KubeCSRResponse, error)
-	// GetRoleRequests lists all existing role requests.
-	GetRoleRequests(services.RoleRequestFilter) ([]services.RoleRequest, error)
-	// WatchRoleRequests sets up a specialized role request watcher.
-	WatchRoleRequests(ctx context.Context, filter services.RoleRequestFilter) (RoleRequestWatcher, error)
-	// CreateRoleRequest creates a new role request.
-	CreateRoleRequest(req services.RoleRequest) error
-	// DeleteRoleRequest deletes a role request.
-	DeleteRoleRequest(reqID string) error
-	// SetRoleRequestState updates the state of an existing role request.
-	SetRoleRequestState(reqID string, state services.RequestState) error
+	// GetAccessRequests lists all existing access requests.
+	GetAccessRequests(services.AccessRequestFilter) ([]services.AccessRequest, error)
+	// WatchAccessRequests sets up a specialized access request watcher.
+	WatchAccessRequests(ctx context.Context, filter services.AccessRequestFilter) (AccessRequestWatcher, error)
+	// CreateAccessRequest creates a new access request.
+	CreateAccessRequest(req services.AccessRequest) error
+	// DeleteAccessRequest deletes an access request.
+	DeleteAccessRequest(reqID string) error
+	// SetAccessRequestState updates the state of an existing access request.
+	SetAccessRequestState(reqID string, state services.RequestState) error
 }

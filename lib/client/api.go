@@ -897,28 +897,28 @@ func (tc *TeleportClient) ReissueUserCerts(ctx context.Context, params ReissuePa
 	return proxyClient.ReissueUserCerts(ctx, params)
 }
 
-func (tc *TeleportClient) CreateRoleRequest(ctx context.Context, req services.RoleRequest) error {
+func (tc *TeleportClient) CreateAccessRequest(ctx context.Context, req services.AccessRequest) error {
 	proxyClient, err := tc.ConnectToProxy(ctx)
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	return proxyClient.CreateRoleRequest(ctx, req)
+	return proxyClient.CreateAccessRequest(ctx, req)
 }
 
-func (tc *TeleportClient) GetRoleRequests(ctx context.Context, filter services.RoleRequestFilter) ([]services.RoleRequest, error) {
+func (tc *TeleportClient) GetAccessRequests(ctx context.Context, filter services.AccessRequestFilter) ([]services.AccessRequest, error) {
 	proxyClient, err := tc.ConnectToProxy(ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	return proxyClient.GetRoleRequests(ctx, filter)
+	return proxyClient.GetAccessRequests(ctx, filter)
 }
 
-func (tc *TeleportClient) WatchRoleRequests(ctx context.Context, filter services.RoleRequestFilter) (auth.RoleRequestWatcher, error) {
+func (tc *TeleportClient) WatchAccessRequests(ctx context.Context, filter services.AccessRequestFilter) (auth.AccessRequestWatcher, error) {
 	proxyClient, err := tc.ConnectToProxy(ctx)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
-	return proxyClient.WatchRoleRequests(ctx, filter)
+	return proxyClient.WatchAccessRequests(ctx, filter)
 }
 
 // SSH connects to a node and, if 'command' is specified, executes the command on it,

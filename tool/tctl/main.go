@@ -29,7 +29,7 @@ func main() {
 		&common.ResourceCommand{},
 		&common.StatusCommand{},
 		&common.TopCommand{},
-		&common.RoleRequestCommand{},
+		&common.AccessRequestCommand{},
 	}
 	common.Run(commands)
 }

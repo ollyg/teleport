@@ -34,9 +34,9 @@ import (
 	"github.com/gravitational/trace"
 )
 
-// RoleRequestCommand implements `tctl users` set of commands
+// AccessRequestCommand implements `tctl users` set of commands
 // It implements CLICommand interface
-type RoleRequestCommand struct {
+type AccessRequestCommand struct {
 	config *service.Config
 	reqIDs []string
 
@@ -52,30 +52,30 @@ type RoleRequestCommand struct {
 	requestDelete  *kingpin.CmdClause
 }
 
-// Initialize allows RoleRequestCommand to plug itself into the CLI parser
-func (c *RoleRequestCommand) Initialize(app *kingpin.Application, config *service.Config) {
+// Initialize allows AccessRequestCommand to plug itself into the CLI parser
+func (c *AccessRequestCommand) Initialize(app *kingpin.Application, config *service.Config) {
 	c.config = config
-	requests := app.Command("request", "Manage role requests")
+	requests := app.Command("request", "Manage access requests")
 
-	c.requestList = requests.Command("ls", "Show active role requests")
+	c.requestList = requests.Command("ls", "Show active access requests")
 	c.requestList.Flag("format", "Output format, 'text' or 'json'").Hidden().Default(teleport.Text).StringVar(&c.format)
 
-	c.requestApprove = requests.Command("approve", "Approve pending role request")
+	c.requestApprove = requests.Command("approve", "Approve pending access request")
 	c.requestApprove.Arg("request-id", "ID of target request(s)").Required().StringsVar(&c.reqIDs)
 
-	c.requestDeny = requests.Command("deny", "Deny pending role request")
+	c.requestDeny = requests.Command("deny", "Deny pending access request")
 	c.requestDeny.Arg("request-id", "ID of target request(s)").Required().StringsVar(&c.reqIDs)
 
-	c.requestCreate = requests.Command("create", "Create pending role request")
+	c.requestCreate = requests.Command("create", "Create pending access request")
 	c.requestCreate.Arg("username", "Name of target user").Required().StringVar(&c.user)
 	c.requestCreate.Arg("roles", "Roles to be requested").Required().StringsVar(&c.roles)
 
-	c.requestDelete = requests.Command("del", "Delete a role request")
+	c.requestDelete = requests.Command("del", "Delete an access request")
 	c.requestDelete.Arg("request-id", "ID of target request(s)").Required().StringsVar(&c.reqIDs)
 }
 
-// TryRun takes the CLI command as an argument (like "role-request list") and executes it.
-func (c *RoleRequestCommand) TryRun(cmd string, client auth.ClientI) (match bool, err error) {
+// TryRun takes the CLI command as an argument (like "access-request list") and executes it.
+func (c *AccessRequestCommand) TryRun(cmd string, client auth.ClientI) (match bool, err error) {
 	switch cmd {
 	case c.requestList.FullCommand():
 		err = c.List(client)
@@ -91,58 +91,58 @@ func (c *RoleRequestCommand) TryRun(cmd string, client auth.ClientI) (match bool
 	return true, trace.Wrap(err)
 }
 
-func (c *RoleRequestCommand) List(client auth.ClientI) error {
-	reqs, err := client.GetRoleRequests(services.RoleRequestFilter{})
+func (c *AccessRequestCommand) List(client auth.ClientI) error {
+	reqs, err := client.GetAccessRequests(services.AccessRequestFilter{})
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	if err := c.PrintRoleRequests(client, reqs, c.format); err != nil {
+	if err := c.PrintAccessRequests(client, reqs, c.format); err != nil {
 		return trace.Wrap(err)
 	}
 	return nil
 }
 
-func (c *RoleRequestCommand) Approve(client auth.ClientI) error {
+func (c *AccessRequestCommand) Approve(client auth.ClientI) error {
 	for _, reqID := range c.reqIDs {
-		if err := client.SetRoleRequestState(reqID, services.RequestState_APPROVED); err != nil {
+		if err := client.SetAccessRequestState(reqID, services.RequestState_APPROVED); err != nil {
 			return trace.Wrap(err)
 		}
 	}
 	return nil
 }
 
-func (c *RoleRequestCommand) Deny(client auth.ClientI) error {
+func (c *AccessRequestCommand) Deny(client auth.ClientI) error {
 	for _, reqID := range c.reqIDs {
-		if err := client.SetRoleRequestState(reqID, services.RequestState_DENIED); err != nil {
+		if err := client.SetAccessRequestState(reqID, services.RequestState_DENIED); err != nil {
 			return trace.Wrap(err)
 		}
 	}
 	return nil
 }
 
-func (c *RoleRequestCommand) Create(client auth.ClientI) error {
-	req, err := services.NewRoleRequest(c.user, c.roles...)
+func (c *AccessRequestCommand) Create(client auth.ClientI) error {
+	req, err := services.NewAccessRequest(c.user, c.roles...)
 	if err != nil {
 		return trace.Wrap(err)
 	}
-	if err := client.CreateRoleRequest(req); err != nil {
+	if err := client.CreateAccessRequest(req); err != nil {
 		return trace.Wrap(err)
 	}
 	fmt.Printf("%s\n", req.GetName())
 	return nil
 }
 
-func (c *RoleRequestCommand) Delete(client auth.ClientI) error {
+func (c *AccessRequestCommand) Delete(client auth.ClientI) error {
 	for _, reqID := range c.reqIDs {
-		if err := client.DeleteRoleRequest(reqID); err != nil {
+		if err := client.DeleteAccessRequest(reqID); err != nil {
 			return trace.Wrap(err)
 		}
 	}
 	return nil
 }
 
-// PrintRoleRequests prints role requests
-func (c *RoleRequestCommand) PrintRoleRequests(client auth.ClientI, reqs []services.RoleRequest, format string) error {
+// PrintAccessRequests prints access requests
+func (c *AccessRequestCommand) PrintAccessRequests(client auth.ClientI, reqs []services.AccessRequest, format string) error {
 	if format == teleport.Text {
 		table := asciitable.MakeTable([]string{"ID", "user", "role(s)", "state", "ttl"})
 		now := time.Now()

@@ -371,8 +371,8 @@ message Namespace  {
 message NamespaceSpec {
 }
 
-// RoleRequest represents a role request resource specification
-message RoleRequestV1  {
+// AccessRequest represents an access request resource specification
+message AccessRequestV1  {
     option (gogoproto.goproto_stringer) = false;
     option (gogoproto.stringer) = false;
 
@@ -382,10 +382,10 @@ message RoleRequestV1  {
 	string SubKind = 2 [(gogoproto.jsontag) = "sub_kind,omitempty"];
 	// Version is version
     string Version = 3 [(gogoproto.jsontag) = "version"];
-	// Metadata is RoleRequest metadata
+	// Metadata is AccessRequest metadata
     Metadata Metadata = 4 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "metadata"];
-    // Spec is a RoleRequest specification
-    RoleRequestSpecV1 Spec = 5 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "spec"];
+    // Spec is an AccessReqeust specification
+    AccessRequestSpecV1 Spec = 5 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "spec"];
 }
 
 // RequestState represents the state of a request for escalated privilege.
@@ -395,20 +395,20 @@ enum RequestState {
     DENIED = 2;
 }
 
-// RoleRequestSpec is the specification for RoleRequest
-message RoleRequestSpecV1 {
+// AccessRequestSpec is the specification for AccessRequest
+message AccessRequestSpecV1 {
     // User is the name of the user to whom the roles will be applied.
     string User = 1 [(gogoproto.jsontag) = "user"];
     // Roles is the name of the roles being requested.
     repeated string Roles = 2 [(gogoproto.jsontag) = "roles"];
-    // State is the current state of this role request.
+    // State is the current state of this access request.
     RequestState State = 3 [(gogoproto.jsontag) = "state,omitempty"];
     // Approved is set to true if an approval is processed.
     //bool Approved = 3 [(gogoproto.jsontag) = "approved,omitempty"];
 }
 
-// RoleRequestFilter encodes filter params for role requests.
-message RoleRequestFilter {
+// AccessRequestFilter encodes filter params for access requests.
+message AccessRequestFilter {
     // ID specifies a request ID if set.
     string ID = 1 [(gogoproto.jsontag) = "id"];
     // User specifies a username if set.
