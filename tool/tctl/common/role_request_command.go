@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	//"time"
+	"time"
 
 	"github.com/gravitational/kingpin"
 	"github.com/gravitational/teleport"
@@ -57,7 +57,7 @@ func (c *RoleRequestCommand) Initialize(app *kingpin.Application, config *servic
 	c.config = config
 	requests := app.Command("request", "Manage role requests")
 
-	c.requestList = requests.Command("list", "Show active role requests")
+	c.requestList = requests.Command("ls", "Show active role requests")
 	c.requestList.Flag("format", "Output format, 'text' or 'json'").Hidden().Default(teleport.Text).StringVar(&c.format)
 
 	c.requestApprove = requests.Command("approve", "Approve pending role request")
@@ -70,7 +70,7 @@ func (c *RoleRequestCommand) Initialize(app *kingpin.Application, config *servic
 	c.requestCreate.Arg("username", "Name of target user").Required().StringVar(&c.user)
 	c.requestCreate.Arg("roles", "Roles to be requested").Required().StringsVar(&c.roles)
 
-	c.requestDelete = requests.Command("delete", "Delete a role request")
+	c.requestDelete = requests.Command("del", "Delete a role request")
 	c.requestDelete.Arg("request-id", "ID of target request(s)").Required().StringsVar(&c.reqIDs)
 }
 
@@ -144,13 +144,19 @@ func (c *RoleRequestCommand) Delete(client auth.ClientI) error {
 // PrintRoleRequests prints role requests
 func (c *RoleRequestCommand) PrintRoleRequests(client auth.ClientI, reqs []services.RoleRequest, format string) error {
 	if format == teleport.Text {
-		table := asciitable.MakeTable([]string{"ID", "user", "role(s)", "state"})
+		table := asciitable.MakeTable([]string{"ID", "user", "role(s)", "state", "ttl"})
+		now := time.Now()
 		for _, req := range reqs {
+			if now.After(req.Expiry()) {
+				continue
+			}
+			ttl := req.Expiry().Sub(now).Round(time.Second)
 			table.AddRow([]string{
 				req.GetName(),
 				req.GetUser(),
 				strings.Join(req.GetRoles(), ","),
 				req.GetState().String(),
+				ttl.String(),
 			})
 		}
 		_, err := table.AsBuffer().WriteTo(os.Stdout)

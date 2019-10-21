@@ -477,12 +477,18 @@ func onRequestList(cf *CLIConf) {
 	if err != nil {
 		utils.FatalError(err)
 	}
-	table := asciitable.MakeTable([]string{"ID", "role(s)", "state"})
+	table := asciitable.MakeTable([]string{"ID", "role(s)", "state", "ttl"})
+	now := time.Now()
 	for _, req := range reqs {
+		if now.After(req.Expiry()) {
+			continue
+		}
+		ttl := req.Expiry().Sub(now).Round(time.Second)
 		table.AddRow([]string{
 			req.GetName(),
 			strings.Join(req.GetRoles(), ","),
 			req.GetState().String(),
+			ttl.String(),
 		})
 	}
 	_, err = table.AsBuffer().WriteTo(os.Stdout)
