@@ -131,6 +131,10 @@ message RequestStateSetter {
     services.RequestState State = 2 [(gogoproto.jsontag) = "state"];
 }
 
+// RequestID is the unique identifier of a role request.
+message RequestID {
+    string ID = 1 [(gogoproto.jsontag) = "id"];
+}
 
 // AuthService is authentication/authorization service implementation
 service AuthService {
@@ -153,6 +157,8 @@ service AuthService {
     rpc WatchRoleRequests(services.RoleRequestFilter) returns (stream services.RoleRequestV1);
     // CreateRoleRequest creates a new role request.
     rpc CreateRoleRequest(services.RoleRequestV1) returns (google.protobuf.Empty);
+    // DeleteRoleRequest deletes a role request.
+    rpc DeleteRoleRequest(RequestID) returns (google.protobuf.Empty);
     // SetRoleRequestState sets the state of a role request.
     rpc SetRoleRequestState(RequestStateSetter) returns (google.protobuf.Empty);
 }

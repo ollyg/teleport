@@ -2583,6 +2583,20 @@ func (c *Client) CreateRoleRequest(req services.RoleRequest) error {
 	return nil
 }
 
+func (c *Client) DeleteRoleRequest(reqID string) error {
+	clt, err := c.grpc()
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	_, err = clt.DeleteRoleRequest(context.TODO(), &proto.RequestID{
+		ID: reqID,
+	})
+	if err != nil {
+		return trail.FromGRPC(err)
+	}
+	return nil
+}
+
 func (c *Client) SetRoleRequestState(reqID string, state services.RequestState) error {
 	clt, err := c.grpc()
 	if err != nil {
@@ -2941,6 +2955,8 @@ type ClientI interface {
 	WatchRoleRequests(ctx context.Context, filter services.RoleRequestFilter) (RoleRequestWatcher, error)
 	// CreateRoleRequest creates a new role request.
 	CreateRoleRequest(req services.RoleRequest) error
+	// DeleteRoleRequest deletes a role request.
+	DeleteRoleRequest(reqID string) error
 	// SetRoleRequestState updates the state of an existing role request.
 	SetRoleRequestState(reqID string, state services.RequestState) error
 }

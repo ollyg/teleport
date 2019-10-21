@@ -256,6 +256,17 @@ func (g *GRPCServer) CreateRoleRequest(ctx context.Context, req *services.RoleRe
 	return &empty.Empty{}, nil
 }
 
+func (g *GRPCServer) DeleteRoleRequest(ctx context.Context, id *proto.RequestID) (*empty.Empty, error) {
+	auth, err := g.authenticate(ctx)
+	if err != nil {
+		return nil, trail.ToGRPC(err)
+	}
+	if err := auth.AuthWithRoles.DeleteRoleRequest(id.ID); err != nil {
+		return nil, trail.ToGRPC(err)
+	}
+	return &empty.Empty{}, nil
+}
+
 func (g *GRPCServer) SetRoleRequestState(ctx context.Context, req *proto.RequestStateSetter) (*empty.Empty, error) {
 	auth, err := g.authenticate(ctx)
 	if err != nil {

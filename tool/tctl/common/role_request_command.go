@@ -49,12 +49,13 @@ type RoleRequestCommand struct {
 	requestApprove *kingpin.CmdClause
 	requestDeny    *kingpin.CmdClause
 	requestCreate  *kingpin.CmdClause
+	requestDelete  *kingpin.CmdClause
 }
 
 // Initialize allows RoleRequestCommand to plug itself into the CLI parser
 func (c *RoleRequestCommand) Initialize(app *kingpin.Application, config *service.Config) {
 	c.config = config
-	requests := app.Command("role-request", "Manage role requests")
+	requests := app.Command("request", "Manage role requests")
 
 	c.requestList = requests.Command("list", "Show active role requests")
 	c.requestList.Flag("format", "Output format, 'text' or 'json'").Hidden().Default(teleport.Text).StringVar(&c.format)
@@ -68,6 +69,9 @@ func (c *RoleRequestCommand) Initialize(app *kingpin.Application, config *servic
 	c.requestCreate = requests.Command("create", "Create pending role request")
 	c.requestCreate.Arg("username", "Name of target user").Required().StringVar(&c.user)
 	c.requestCreate.Arg("roles", "Roles to be requested").Required().StringsVar(&c.roles)
+
+	c.requestDelete = requests.Command("delete", "Delete a role request")
+	c.requestDelete.Arg("request-id", "ID of target request(s)").Required().StringsVar(&c.reqIDs)
 }
 
 // TryRun takes the CLI command as an argument (like "role-request list") and executes it.
@@ -125,6 +129,15 @@ func (c *RoleRequestCommand) Create(client auth.ClientI) error {
 		return trace.Wrap(err)
 	}
 	fmt.Printf("%s\n", req.GetName())
+	return nil
+}
+
+func (c *RoleRequestCommand) Delete(client auth.ClientI) error {
+	for _, reqID := range c.reqIDs {
+		if err := client.DeleteRoleRequest(reqID); err != nil {
+			return trace.Wrap(err)
+		}
+	}
 	return nil
 }
 
