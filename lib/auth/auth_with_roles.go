@@ -453,7 +453,7 @@ func (a *AuthWithRoles) NewWatcher(ctx context.Context, watch services.Watch) (s
 				}
 			}
 		case services.KindAccessRequest:
-			if err := a.action(defaults.Namespace, services.KindUser, services.VerbRead); err != nil {
+			if err := a.action(defaults.Namespace, services.KindAccessRequest, services.VerbRead); err != nil {
 				return nil, trace.Wrap(err)
 			}
 		default:
@@ -782,14 +782,11 @@ func (a *AuthWithRoles) DeleteWebSession(user string, sid string) error {
 }
 
 func (a *AuthWithRoles) GetAccessRequests(filter services.AccessRequestFilter) ([]services.AccessRequest, error) {
-	// Currently, AccessRequests are scoped under "KindUser" permissions, because
-	// KindUser permissions effectively grant the same powers (access to the names
-	// of users and roles, and the ability to apply roles to users).
 	if filter.User == "" || a.currentUserAction(filter.User) != nil {
-		if err := a.action(defaults.Namespace, services.KindUser, services.VerbList); err != nil {
+		if err := a.action(defaults.Namespace, services.KindAccessRequest, services.VerbList); err != nil {
 			return nil, trace.Wrap(err)
 		}
-		if err := a.action(defaults.Namespace, services.KindUser, services.VerbRead); err != nil {
+		if err := a.action(defaults.Namespace, services.KindAccessRequest, services.VerbRead); err != nil {
 			return nil, trace.Wrap(err)
 		}
 	}
@@ -798,10 +795,10 @@ func (a *AuthWithRoles) GetAccessRequests(filter services.AccessRequestFilter) (
 
 func (a *AuthWithRoles) WatchAccessRequests(ctx context.Context, filter services.AccessRequestFilter) (AccessRequestWatcher, error) {
 	if filter.User == "" || a.currentUserAction(filter.User) != nil {
-		if err := a.action(defaults.Namespace, services.KindUser, services.VerbList); err != nil {
+		if err := a.action(defaults.Namespace, services.KindAccessRequest, services.VerbList); err != nil {
 			return nil, trace.Wrap(err)
 		}
-		if err := a.action(defaults.Namespace, services.KindUser, services.VerbRead); err != nil {
+		if err := a.action(defaults.Namespace, services.KindAccessRequest, services.VerbRead); err != nil {
 			return nil, trace.Wrap(err)
 		}
 	}
@@ -816,7 +813,7 @@ func (a *AuthWithRoles) CreateAccessRequest(req services.AccessRequest) error {
 	if !req.GetState().IsPending() || a.currentUserAction(req.GetUser()) != nil {
 		// Users are allowed to create pending requests for themselves, all other
 		// creation attempts are subject to normal permissioning.
-		if err := a.action(defaults.Namespace, services.KindUser, services.VerbCreate); err != nil {
+		if err := a.action(defaults.Namespace, services.KindAccessRequest, services.VerbCreate); err != nil {
 			return trace.Wrap(err)
 		}
 	}
@@ -824,14 +821,14 @@ func (a *AuthWithRoles) CreateAccessRequest(req services.AccessRequest) error {
 }
 
 func (a *AuthWithRoles) SetAccessRequestState(reqID string, state services.RequestState) error {
-	if err := a.action(defaults.Namespace, services.KindUser, services.VerbUpdate); err != nil {
+	if err := a.action(defaults.Namespace, services.KindAccessRequest, services.VerbUpdate); err != nil {
 		return trace.Wrap(err)
 	}
 	return a.authServer.SetAccessRequestState(reqID, state)
 }
 
 func (a *AuthWithRoles) DeleteAccessRequest(name string) error {
-	if err := a.action(defaults.Namespace, services.KindUser, services.VerbUpdate); err != nil {
+	if err := a.action(defaults.Namespace, services.KindAccessRequest, services.VerbUpdate); err != nil {
 		return trace.Wrap(err)
 	}
 	return a.authServer.DeleteAccessRequest(name)

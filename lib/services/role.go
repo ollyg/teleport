@@ -86,7 +86,7 @@ func RoleNameForCertAuthority(name string) string {
 }
 
 // NewAdminRole is the default admin role for all local users if another role
-// is not explicitly assigned (Enterprise only).
+// is not explicitly assigned (this role applies to all users in OSS version).
 func NewAdminRole() Role {
 	role := &RoleV3{
 		Kind:    KindRole,
