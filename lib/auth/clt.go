@@ -123,7 +123,7 @@ func DecodeClusterName(serverName string) (string, error) {
 	}
 	const suffix = "." + teleport.APIDomain
 	if !strings.HasSuffix(serverName, suffix) {
-		return "", trace.BadParameter("unrecognized name, expected suffix %v, got %q", teleport.APIDomain, serverName)
+		return "", trace.NotFound("no cluster name is encoded")
 	}
 	clusterName := strings.TrimSuffix(serverName, suffix)
 
