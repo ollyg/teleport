@@ -17,8 +17,8 @@ limitations under the License.
 package main
 
 import (
-	"bufio"
-	"bytes"
+	//"bufio"
+	//"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -552,7 +552,7 @@ func onLogin(cf *CLIConf) {
 		case (cf.Proxy == "" || host(cf.Proxy) == host(profile.ProxyURL.Host)) && cf.SiteName != "":
 			// trigger reissue, preserving any active requests.
 			err = tc.ReissueUserCerts(cf.Context, client.ReissueParams{
-				AccessRequests:   profile.ActiveRequests.AccessRequests,
+				AccessRequests: profile.ActiveRequests.AccessRequests,
 				RouteToCluster: cf.SiteName,
 			})
 			if err != nil {
@@ -1172,6 +1172,7 @@ func refuseArgs(command string, args []string) {
 	}
 }
 
+/*
 // rawIdentity encodes the basic components of an identity file.
 type rawIdentity struct {
 	PrivateKey []byte
@@ -1255,7 +1256,7 @@ func decodeIdentity(r io.Reader) (*rawIdentity, error) {
 		return nil, trace.Wrap(err)
 	}
 	return &ident, nil
-}
+}*/
 
 // loadIdentity loads the private key + certificate from a file
 // Returns:
@@ -1273,7 +1274,7 @@ func loadIdentity(idFn string) (*client.Key, ssh.HostKeyCallback, error) {
 		return nil, nil, trace.Wrap(err)
 	}
 	defer f.Close()
-	ident, err := decodeIdentity(f)
+	ident, err := client.DecodeIdentityFile(f)
 	if err != nil {
 		return nil, nil, trace.Wrap(err, "failed to parse identity file")
 	}
@@ -1514,7 +1515,7 @@ func reissueWithRequests(cf *CLIConf, tc *client.TeleportClient, reqIDs ...strin
 		return trace.Wrap(err)
 	}
 	params := client.ReissueParams{
-		AccessRequests:   reqIDs,
+		AccessRequests: reqIDs,
 		RouteToCluster: cf.SiteName,
 	}
 	// if the certificate already had active requests, add them to our inputs parameters.
