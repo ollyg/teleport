@@ -1,5 +1,5 @@
 /*
-Copyright 2016-2019 Gravitational, Inc.
+Copyright 2019 Gravitational, Inc.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -97,8 +97,11 @@ type AccessRequest interface {
 	GetState() RequestState
 	// SetApproved sets the approval state of the request
 	SetState(RequestState) error
-
+	// CheckAndSetDefaults validates the access request and
+	// supplies default values where appropriate.
 	CheckAndSetDefaults() error
+	// Equals checks equality between access request values.
+	Equals(AccessRequest) bool
 }
 
 func (s RequestState) IsPending() bool {
@@ -189,6 +192,32 @@ func (r *AccessRequestV1) Check() error {
 	return nil
 }
 
+func (r *AccessRequestV1) Equals(other AccessRequest) bool {
+	o, ok := other.(*AccessRequestV1)
+	if !ok {
+		return false
+	}
+	if r.GetName() != o.GetName() {
+		return false
+	}
+	return r.Spec.Equals(&o.Spec)
+}
+
+func (s *AccessRequestSpecV1) Equals(other *AccessRequestSpecV1) bool {
+	if s.User != other.User {
+		return false
+	}
+	if len(s.Roles) != len(other.Roles) {
+		return false
+	}
+	for i, role := range s.Roles {
+		if role != other.Roles[i] {
+			return false
+		}
+	}
+	return s.State == other.State
+}
+
 // --------------------------------------------------------------------
 
 type AccessRequestMarshaler interface {
@@ -196,9 +225,9 @@ type AccessRequestMarshaler interface {
 	UnmarshalAccessRequest(bytes []byte, opts ...MarshalOption) (AccessRequest, error)
 }
 
-type roleRequestMarshaler struct{}
+type accessRequestMarshaler struct{}
 
-func (r *roleRequestMarshaler) MarshalAccessRequest(req AccessRequest, opts ...MarshalOption) ([]byte, error) {
+func (r *accessRequestMarshaler) MarshalAccessRequest(req AccessRequest, opts ...MarshalOption) ([]byte, error) {
 	cfg, err := collectOptions(opts)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -218,7 +247,7 @@ func (r *roleRequestMarshaler) MarshalAccessRequest(req AccessRequest, opts ...M
 	}
 }
 
-func (r *roleRequestMarshaler) UnmarshalAccessRequest(data []byte, opts ...MarshalOption) (AccessRequest, error) {
+func (r *accessRequestMarshaler) UnmarshalAccessRequest(data []byte, opts ...MarshalOption) (AccessRequest, error) {
 	cfg, err := collectOptions(opts)
 	if err != nil {
 		return nil, trace.Wrap(err)
@@ -245,12 +274,12 @@ func (r *roleRequestMarshaler) UnmarshalAccessRequest(data []byte, opts ...Marsh
 	return &req, nil
 }
 
-var roleRequestMarshalerInstance AccessRequestMarshaler = &roleRequestMarshaler{}
+var accessRequestMarshalerInstance AccessRequestMarshaler = &accessRequestMarshaler{}
 
 func GetAccessRequestMarshaler() AccessRequestMarshaler {
 	marshalerMutex.Lock()
 	defer marshalerMutex.Unlock()
-	return roleRequestMarshalerInstance
+	return accessRequestMarshalerInstance
 }
 
 const AccessRequestSpecSchema = `{

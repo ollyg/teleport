@@ -641,15 +641,15 @@ type clt interface {
 	UpsertUser(services.User) error
 }
 
-// CreateUserRoleAndRequestable creates two roles for a user, one base role with no
-// allowed logins, and a requestable role with an allowed login matching username.
+// CreateUserRoleAndRequestable creates two roles for a user, one base role with allowed login
+// matching username, and another role with a login matching rolename that can be requested.
 func CreateUserRoleAndRequestable(clt clt, username string, rolename string) (services.User, error) {
 	user, err := services.NewUser(username)
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
 	baseRole := services.RoleForUser(user)
-	baseRole.SetLogins(services.Allow, nil)
+	baseRole.SetLogins(services.Allow, []string{username})
 	baseRole.SetRequestableRoles([]string{rolename})
 	if baseRole.GetRequestableRoles()[0] != rolename {
 		panic(baseRole.GetRequestableRoles())
@@ -665,7 +665,7 @@ func CreateUserRoleAndRequestable(clt clt, username string, rolename string) (se
 	}
 	requestableRole := services.RoleForUser(user)
 	requestableRole.SetName(rolename)
-	requestableRole.SetLogins(services.Allow, []string{user.GetName()})
+	requestableRole.SetLogins(services.Allow, []string{rolename})
 	err = clt.UpsertRole(requestableRole)
 	if err != nil {
 		return nil, trace.Wrap(err)
