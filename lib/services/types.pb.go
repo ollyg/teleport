@@ -1512,9 +1512,11 @@ type RoleOptions struct {
 	DisconnectExpiredCert Bool `protobuf:"varint,6,opt,name=DisconnectExpiredCert,proto3,casttype=Bool" json:"disconnect_expired_cert,omitempty"`
 	// BPF defines what events to record for the BPF-based session recorder.
 	BPF                  []string `protobuf:"bytes,7,rep,name=BPF" json:"enhanced_recording,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	// X11Forwarding defines if the certificate will have "permit-x11-forwarding"
+	X11Forwarding Bool `protobuf:"varint,8,opt,name=X11Forwarding,proto3,casttype=Bool" json:"x11_forwarding"`
+	XXX_NoUnkeyedLiteral  struct{} `json:"-"`
+	XXX_unrecognized      []byte   `json:"-"`
+	XXX_sizecache         int32    `json:"-"`
 }
 
 func (m *RoleOptions) Reset()         { *m = RoleOptions{} }

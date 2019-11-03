@@ -261,10 +261,14 @@ func (k *Keygen) GenerateUserCert(c services.UserCertParams) ([]byte, error) {
 	}
 	cert.Permissions.Extensions = map[string]string{
 		teleport.CertExtensionPermitPTY:            "",
+		teleport.CertExtensionPermitX11Forwarding:  "",
 		teleport.CertExtensionPermitPortForwarding: "",
 	}
 	if c.PermitAgentForwarding {
 		cert.Permissions.Extensions[teleport.CertExtensionPermitAgentForwarding] = ""
+	}
+	if c.PermitX11Forwarding {
+		cert.Permissions.Extensions[teleport.CertExtensionPermitX11Forwarding] = ""
 	}
 	if !c.PermitPortForwarding {
 		delete(cert.Permissions.Extensions, teleport.CertExtensionPermitPortForwarding)

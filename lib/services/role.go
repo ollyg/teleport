@@ -696,6 +696,7 @@ func (r *RoleV3) String() string {
 func (o RoleOptions) Equals(other RoleOptions) bool {
 	return (o.ForwardAgent.Value() == other.ForwardAgent.Value() &&
 		o.MaxSessionTTL.Value() == other.MaxSessionTTL.Value() &&
+		o.X11Forwarding.Value() == other.X11Forwarding.Value() &&
 		BoolDefaultTrue(o.PortForwarding) == BoolDefaultTrue(other.PortForwarding) &&
 		o.CertificateFormat == other.CertificateFormat &&
 		o.ClientIdleTimeout.Value() == other.ClientIdleTimeout.Value() &&
@@ -1310,6 +1311,9 @@ type AccessChecker interface {
 	// agents.
 	CanForwardAgents() bool
 
+	// CanX11Forward returns true if this RoleSet can forward x11.
+	CanX11Forward() bool
+
 	// CanPortForward returns true if this RoleSet can forward ports.
 	CanPortForward() bool
 
@@ -1743,6 +1747,16 @@ func (set RoleSet) CheckAccessToServer(login string, s Server) error {
 func (set RoleSet) CanForwardAgents() bool {
 	for _, role := range set {
 		if role.GetOptions().ForwardAgent.Value() {
+			return true
+		}
+	}
+	return false
+}
+
+// CanX11Forward returns true if a role in the RoleSet allows x11 forwarding.
+func (set RoleSet) CanX11Forward() bool {
+	for _, role := range set {
+		if role.GetOptions().X11Forwarding.Value() {
 			return true
 		}
 	}
@@ -2237,7 +2251,8 @@ const RoleSpecV3SchemaTemplate = `{
         "enhanced_recording": { 
           "type": "array",
           "items": { "type": "string" }
-        }
+        },
+        "x11_forwarding": { "type": ["boolean", "string"] }
       }
     },
     "allow": { "$ref": "#/definitions/role_condition" },

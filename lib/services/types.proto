@@ -481,6 +481,9 @@ message RoleOptions  {
 
     // BPF defines what events to record for the BPF-based session recorder.
     repeated string BPF = 7 [(gogoproto.jsontag) = "enhanced_recording,omitempty"];
+
+	// X11Forwarding defines if the certificate will have "permit-x11-forwarding"
+	bool X11Forwarding = 8 [(gogoproto.jsontag) = "x11_forwarding", (gogoproto.casttype) = "Bool"];
 }
 
 
