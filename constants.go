@@ -373,7 +373,7 @@ const (
 	// CertExtensionPermitPortForwarding allows user to request port forwarding
 	CertExtensionPermitPortForwarding = "permit-port-forwarding"
 	// CertExtensionPermitX11Forwarding allows user to request x11 forwarding
-	CertExtensionPermitX11Forwarding = "permit-x11-forwarding"
+	CertExtensionPermitX11Forwarding = "permit-X11-forwarding"
 	// CertExtensionTeleportRoles is used to propagate teleport roles
 	CertExtensionTeleportRoles = "teleport-roles"
 	// CertExtensionTeleportRouteToCluster is used to encode
