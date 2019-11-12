@@ -226,9 +226,9 @@ export class LoginInputForm extends React.Component {
           {!hasAnyAuth ? <div> You have no authentication options configured </div>
             :
             <div>
-              {this.renderNameAndPassFields()}
-              {this.render2faFields()}
-              {this.renderLoginBtn()}
+              /* {this.renderNameAndPassFields()} */
+              /* {this.render2faFields()} */
+              /* {this.renderLoginBtn()} */
               {this.renderSsoBtns()}
             </div>
           }
