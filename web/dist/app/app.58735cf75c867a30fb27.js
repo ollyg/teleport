@@ -2988,9 +2988,9 @@ var login_LoginInputForm = function (_React$Component2) {
           ) : react_default.a.createElement(
             'div',
             null,
-            this.renderNameAndPassFields(),
-            this.render2faFields(),
-            this.renderLoginBtn(),
+            /* this.renderNameAndPassFields(), */
+            /* this.render2faFields(), */
+            /* this.renderLoginBtn(), */
             this.renderSsoBtns()
           )
         ),
