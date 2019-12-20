@@ -10,7 +10,7 @@ darwin
 *.zip
 
 # built web assets
-# web/dist/app/app
+web/dist/app/app
 
 # editors
 .vscode
